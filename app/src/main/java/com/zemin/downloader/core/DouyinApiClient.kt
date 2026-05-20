@@ -11,8 +11,10 @@ import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.IOException
-import java.util.Random
+import java.net.URLDecoder
 import java.util.concurrent.ConcurrentHashMap
 
 class DouyinApiClient(
@@ -25,10 +27,7 @@ class DouyinApiClient(
         const val DEFAULT_USER_AGENT =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
 
-        private val USER_AGENT_POOL = arrayOf(
-            DEFAULT_USER_AGENT,
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
-        )
+        private val USER_AGENT_POOL = arrayOf(DEFAULT_USER_AGENT)
         private val DETAIL_AIDS = listOf("6383", "1128")
         private val EMPTY_BODY_RETRY_DELAYS_MS = listOf(1_000L, 2_000L, 5_000L)
 
@@ -46,7 +45,7 @@ class DouyinApiClient(
         }
     }
 
-    private val userAgent: String = USER_AGENT_POOL[Random().nextInt(USER_AGENT_POOL.size)]
+    private val userAgent: String = USER_AGENT_POOL.first()
     private val cookieStore = ConcurrentHashMap<String, String>().apply {
         putAll(cookies)
     }
@@ -75,7 +74,8 @@ class DouyinApiClient(
             val request = chain.request().newBuilder()
                 .header("User-Agent", userAgent)
                 .header("Referer", "$BASE_URL/?recommend=1")
-                .header("Accept", "application/json, text/plain, */*")
+                .header("Accept", "*/*")
+                .header("Accept-Encoding", "gzip, deflate")
                 .header("Accept-Language", "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7")
                 .header("Cache-Control", "no-cache")
                 .build()
@@ -106,8 +106,8 @@ class DouyinApiClient(
                 }
             }
 
-            Log.w(TAG, "requestAwemeDetail failed: all aid/retry attempts returned empty body")
-            null
+            Log.w(TAG, "requestAwemeDetail failed: all aid/retry attempts returned empty body, trying web page fallback")
+            requestAwemeDetailFromWebPage(awemeId)
         } catch (e: IOException) {
             Log.e(TAG, "requestAwemeDetail: IOException = ${e.message}", e)
             null
@@ -115,6 +115,38 @@ class DouyinApiClient(
             Log.e(TAG, "requestAwemeDetail: IllegalStateException = ${e.message}", e)
             null
         }
+    }
+
+    private fun requestAwemeDetailFromWebPage(awemeId: String): String? {
+        val pageUrl = "$BASE_URL/video/$awemeId"
+        val request = Request.Builder()
+            .url(pageUrl)
+            .get()
+            .build()
+
+        return runCatching {
+            client.newCall(request).execute().use { response ->
+                val html = response.body?.string().orEmpty()
+                if (!response.isSuccessful || html.isBlank()) {
+                    Log.w(
+                        TAG,
+                        "web page fallback failed: code=${response.code}, body=${html.preview()}"
+                    )
+                    return@runCatching null
+                }
+                Log.d(TAG, "web page fallback html preview: ${html.preview()}")
+
+                extractAwemeDetailFromHtml(html, awemeId)?.let { detail ->
+                    Log.d(TAG, "web page fallback success: awemeId=$awemeId")
+                    JSONObject().put("aweme_detail", detail).toString()
+                } ?: run {
+                    Log.w(TAG, "web page fallback failed: aweme detail not found in html")
+                    null
+                }
+            }
+        }.onFailure { error ->
+            Log.w(TAG, "web page fallback exception: ${error.message}", error)
+        }.getOrNull()
     }
 
     private suspend fun requestAwemeDetailOnce(
@@ -159,7 +191,10 @@ class DouyinApiClient(
                 .get()
                 .build()
             client.newCall(request).execute().use { response ->
-                response.body?.close()
+                val body = response.body?.string().orEmpty()
+                extractMsToken(body)?.let { token ->
+                    cookieStore["msToken"] = token
+                }
                 Log.d(
                     TAG,
                     "warmUpCookiesIfNeeded: code=${response.code}, msTokenPresent=${!cookieStore["msToken"].isNullOrBlank()}"
@@ -171,7 +206,7 @@ class DouyinApiClient(
     }
 
     private fun buildAwemeDetailUrl(awemeId: String, aid: String): HttpUrl {
-        val msToken = cookieStore["msToken"] ?: generateMsToken()
+        val msToken = cookieStore["msToken"].orEmpty()
         return HttpUrl.Builder()
             .scheme("https")
             .host("www.douyin.com")
@@ -197,7 +232,7 @@ class DouyinApiClient(
             .addQueryParameter("os_name", "Windows")
             .addQueryParameter("os_version", "10")
             .addQueryParameter("pc_libra_divert", "Windows")
-            .addQueryParameter("cpu_core_num", "8")
+            .addQueryParameter("cpu_core_num", "16")
             .addQueryParameter("device_memory", "8")
             .addQueryParameter("platform", "PC")
             .addQueryParameter("downlink", "10")
@@ -205,14 +240,114 @@ class DouyinApiClient(
             .addQueryParameter("round_trip_time", "200")
             .addQueryParameter("support_h265", "1")
             .addQueryParameter("support_dash", "1")
-            .addQueryParameter("uifid", cookieStore["UIFID"].orEmpty())
+            .addQueryParameter("uifid", "")
             .addQueryParameter("msToken", msToken)
             .build()
     }
 
-    private fun generateMsToken(): String {
-        val chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-        return (1..107).map { chars[Random().nextInt(chars.length)] }.joinToString("")
+    private fun extractAwemeDetailFromHtml(html: String, awemeId: String): JSONObject? {
+        extractScriptJson(html, "__UNIVERSAL_DATA_FOR_REHYDRATION__")?.let { json ->
+            findAwemeDetail(json, awemeId)?.let { return it }
+        }
+
+        extractScriptJson(html, "RENDER_DATA")?.let { json ->
+            findAwemeDetail(json, awemeId)?.let { return it }
+        }
+
+        extractInlineJson(html)?.let { json ->
+            findAwemeDetail(json, awemeId)?.let { return it }
+        }
+
+        return null
+    }
+
+    private fun extractScriptJson(html: String, scriptId: String): Any? {
+        val pattern = Regex(
+            """<script[^>]+id=["']$scriptId["'][^>]*>(.*?)</script>""",
+            setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
+        )
+        val raw = pattern.find(html)?.groupValues?.getOrNull(1)?.trim().orEmpty()
+        if (raw.isBlank()) return null
+
+        return parseJsonOrNull(raw) ?: parseJsonOrNull(urlDecode(raw))
+    }
+
+    private fun extractInlineJson(html: String): Any? {
+        val markerPatterns = listOf(
+            Regex("""window\.__INITIAL_STATE__\s*=\s*(\{.*?})\s*</script>""", RegexOption.DOT_MATCHES_ALL),
+            Regex("""self\.__pace_f.push\(\[1,\s*"(.*?)"\]\)""", RegexOption.DOT_MATCHES_ALL)
+        )
+        return markerPatterns.firstNotNullOfOrNull { pattern ->
+            val raw = pattern.find(html)?.groupValues?.getOrNull(1) ?: return@firstNotNullOfOrNull null
+            parseJsonOrNull(raw) ?: parseJsonOrNull(unescapeJsString(raw))
+        }
+    }
+
+    private fun parseJsonOrNull(raw: String): Any? {
+        val text = raw.trim()
+        if (text.isBlank()) return null
+        return runCatching {
+            when {
+                text.startsWith("{") -> JSONObject(text)
+                text.startsWith("[") -> JSONArray(text)
+                else -> null
+            }
+        }.getOrNull()
+    }
+
+    private fun findAwemeDetail(node: Any?, awemeId: String): JSONObject? {
+        return when (node) {
+            is JSONObject -> {
+                val objectAwemeId = node.optString("aweme_id")
+                val hasVideo = node.optJSONObject("video") != null
+                if (objectAwemeId == awemeId && hasVideo) {
+                    return node
+                }
+
+                node.optJSONObject("aweme_detail")?.let { detail ->
+                    if (detail.optString("aweme_id") == awemeId || detail.optJSONObject("video") != null) {
+                        return detail
+                    }
+                }
+
+                node.keys().asSequence().firstNotNullOfOrNull { key ->
+                    findAwemeDetail(node.opt(key), awemeId)
+                }
+            }
+            is JSONArray -> {
+                (0 until node.length()).asSequence().firstNotNullOfOrNull { index ->
+                    findAwemeDetail(node.opt(index), awemeId)
+                }
+            }
+            else -> null
+        }
+    }
+
+    private fun urlDecode(value: String): String {
+        return runCatching { URLDecoder.decode(value, "UTF-8") }.getOrDefault(value)
+    }
+
+    private fun unescapeJsString(value: String): String {
+        return value
+            .replace("\\\"", "\"")
+            .replace("\\\\", "\\")
+            .replace("\\/", "/")
+            .replace("\\n", "")
+            .replace("\\t", "")
+            .replace("\\u003C", "<")
+            .replace("\\u003E", ">")
+            .replace("\\u0026", "&")
+    }
+
+    private fun extractMsToken(html: String): String? {
+        val patterns = listOf(
+            Regex(""""msToken"\s*:\s*"([^"]+)""""),
+            Regex("""msToken=([^"&\s]+)"""),
+            Regex("""msToken%3D([^"%&\s]+)""")
+        )
+        return patterns.firstNotNullOfOrNull { pattern ->
+            pattern.find(html)?.groupValues?.getOrNull(1)
+        }
     }
 
     private class HttpLoggingInterceptor : Interceptor {
