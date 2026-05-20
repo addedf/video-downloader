@@ -1,12 +1,15 @@
 package com.zemin.downloader.core
 
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
+import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import java.io.IOException
 import java.util.Random
 
@@ -15,6 +18,7 @@ class DouyinApiClient(
     private val signatureProvider: SignatureProvider
 ) {
     companion object {
+        private const val TAG = "DouyinApiClient"
         const val BASE_URL = "https://www.douyin.com"
         const val DEFAULT_USER_AGENT =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
@@ -23,6 +27,19 @@ class DouyinApiClient(
             DEFAULT_USER_AGENT,
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
         )
+
+        fun String?.preview(limit: Int = 800): String {
+            if (this == null) return "null"
+            val compact = replace(Regex("\\s+"), " ").trim()
+            return if (compact.length <= limit) compact else compact.take(limit) + "...(truncated)"
+        }
+
+        fun maskCookie(cookie: String): String {
+            return cookie.split(";").joinToString(";") { part ->
+                val key = part.substringBefore("=", part).trim()
+                if (key.isBlank()) "***" else "$key=***"
+            }
+        }
     }
 
     private val userAgent: String = USER_AGENT_POOL[Random().nextInt(USER_AGENT_POOL.size)]
@@ -53,10 +70,12 @@ class DouyinApiClient(
                 .build()
             chain.proceed(request)
         }
+        .addNetworkInterceptor(HttpLoggingInterceptor())
         .build()
 
     suspend fun requestAwemeDetail(awemeId: String): String? = withContext(Dispatchers.IO) {
         try {
+            Log.d(TAG, "requestAwemeDetail: awemeId = $awemeId")
             val unsignedUrl = buildAwemeDetailUrl(awemeId)
             val xBogus = signatureProvider.generateXBogus(unsignedUrl.toString(), userAgent)
             val signedUrl = unsignedUrl.newBuilder()
@@ -69,14 +88,26 @@ class DouyinApiClient(
                 .build()
 
             client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@withContext null
-                response.body?.string()
+                val responseBody = response.body?.string()
+                if (!response.isSuccessful) {
+                    Log.w(
+                        TAG,
+                        "requestAwemeDetail failed: code=${response.code}, message=${response.message}, body=${responseBody.preview()}"
+                    )
+                    return@withContext null
+                }
+                if (responseBody.isNullOrBlank()) {
+                    Log.w(TAG, "requestAwemeDetail failed: empty response body")
+                    return@withContext null
+                }
+                Log.d(TAG, "requestAwemeDetail success: body=${responseBody.preview()}")
+                responseBody
             }
         } catch (e: IOException) {
-            e.printStackTrace()
+            Log.e(TAG, "requestAwemeDetail: IOException = ${e.message}", e)
             null
         } catch (e: IllegalStateException) {
-            e.printStackTrace()
+            Log.e(TAG, "requestAwemeDetail: IllegalStateException = ${e.message}", e)
             null
         }
     }
@@ -120,4 +151,41 @@ class DouyinApiClient(
         val chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
         return (1..107).map { chars[Random().nextInt(chars.length)] }.joinToString("")
     }
+
+    private class HttpLoggingInterceptor : Interceptor {
+        override fun intercept(chain: Interceptor.Chain): Response {
+            val request = chain.request()
+            val startNs = System.nanoTime()
+
+            Log.d(TAG, "--> ${request.method} ${request.url}")
+            request.headers.forEach { header ->
+                val value = if (header.first.equals("Cookie", ignoreCase = true)) {
+                    maskCookie(header.second)
+                } else {
+                    header.second
+                }
+                Log.d(TAG, "--> ${header.first}: $value")
+            }
+
+            return try {
+                val response = chain.proceed(request)
+                val tookMs = (System.nanoTime() - startNs) / 1_000_000
+                Log.d(TAG, "<-- ${response.code} ${response.message} (${tookMs}ms) ${response.request.url}")
+                response.headers.forEach { header ->
+                    val value = if (header.first.equals("Set-Cookie", ignoreCase = true)) {
+                        maskCookie(header.second)
+                    } else {
+                        header.second
+                    }
+                    Log.d(TAG, "<-- ${header.first}: $value")
+                }
+                response
+            } catch (e: IOException) {
+                val tookMs = (System.nanoTime() - startNs) / 1_000_000
+                Log.e(TAG, "<-- HTTP FAILED (${tookMs}ms): ${e.message}", e)
+                throw e
+            }
+        }
+    }
+
 }
