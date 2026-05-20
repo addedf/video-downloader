@@ -285,6 +285,7 @@ class DouyinApiClient(
             }
         }
 
+        logWebPageFallbackDiagnostics(html, awemeId)
         return null
     }
 
@@ -470,6 +471,8 @@ class DouyinApiClient(
     private fun findAwemeDetail(node: Any?, awemeId: String): JSONObject? {
         return when (node) {
             is JSONObject -> {
+                findKnownAwemeContainer(node, awemeId)?.let { return it }
+
                 val objectAwemeId = node.firstString(
                     "aweme_id",
                     "awemeId",
@@ -484,6 +487,16 @@ class DouyinApiClient(
                     node.optJSONObject("videoInfo") != null
                 if (objectAwemeId == awemeId && hasVideo) {
                     return normalizeAwemeDetail(node, awemeId)
+                }
+
+                if (node.containsAwemeIdDeep(awemeId)) {
+                    findFirstVideoObject(node)?.let { video ->
+                        return buildAwemeDetailFromVideo(awemeId, node, video)
+                    }
+                    findFirstVideoUrl(node)?.let { videoUrl ->
+                        Log.d(TAG, "web page fallback parser hit: aweme container video url")
+                        return buildMinimalAwemeDetail(awemeId, videoUrl)
+                    }
                 }
 
                 node.optJSONObject("aweme_detail")?.let { detail ->
@@ -513,6 +526,57 @@ class DouyinApiClient(
             }
             else -> null
         }
+    }
+
+    private fun findKnownAwemeContainer(node: JSONObject, awemeId: String): JSONObject? {
+        val keys = arrayOf(
+            "aweme_detail",
+            "awemeDetail",
+            "aweme_info",
+            "awemeInfo",
+            "aweme",
+            "itemStruct",
+            "item",
+            "detail",
+            "videoDetail",
+            "videoData",
+            "post"
+        )
+        keys.forEach { key ->
+            node.optJSONObject(key)?.let { child ->
+                if (child.matchesAwemeId(awemeId) || child.containsAwemeIdDeep(awemeId)) {
+                    findFirstVideoObject(child)?.let { video ->
+                        return buildAwemeDetailFromVideo(awemeId, child, video)
+                    }
+                    findFirstVideoUrl(child)?.let { videoUrl ->
+                        Log.d(TAG, "web page fallback parser hit: known container url key=$key")
+                        return buildMinimalAwemeDetail(awemeId, videoUrl)
+                    }
+                    if (child.optJSONObject("video") != null ||
+                        child.optJSONObject("video_info") != null ||
+                        child.optJSONObject("videoInfo") != null
+                    ) {
+                        return normalizeAwemeDetail(child, awemeId)
+                    }
+                }
+            }
+        }
+        return null
+    }
+
+    private fun buildAwemeDetailFromVideo(
+        awemeId: String,
+        container: JSONObject,
+        rawVideo: JSONObject
+    ): JSONObject {
+        val detail = JSONObject().put("aweme_id", awemeId)
+        detail.put("video", normalizeVideo(rawVideo))
+        container.firstString("desc", "description", "title", "caption").takeIf { it.isNotBlank() }?.let {
+            detail.put("desc", it)
+        }
+        container.firstJSONObject("author", "authorInfo", "authorUser", "user")?.let { detail.put("author", it) }
+        Log.d(TAG, "web page fallback parser hit: aweme container video object")
+        return detail
     }
 
     private fun urlDecode(value: String): String {
@@ -652,7 +716,7 @@ class DouyinApiClient(
 
     private fun extractVideoUrlFromText(text: String): String? {
         val urlPattern = Regex("""(?:https?:)?//[^"'<>\\\s]+""")
-        return urlPattern.findAll(unescapeJsString(text))
+        return urlPattern.findAll(repeatedUrlDecode(unescapeJsString(text)))
             .map { normalizeVideoUrl(it.value) }
             .firstOrNull { isVideoCandidateUrl(it) }
     }
@@ -669,6 +733,30 @@ class DouyinApiClient(
                 val text = unescapeJsString(node)
                 if (isVideoCandidateUrl(text)) normalizeVideoUrl(text) else extractVideoUrlFromText(text)
             }
+            else -> null
+        }
+    }
+
+    private fun findFirstVideoObject(node: Any?): JSONObject? {
+        return when (node) {
+            is JSONObject -> {
+                node.firstJSONObject(
+                    "video",
+                    "video_info",
+                    "videoInfo",
+                    "video_data",
+                    "videoData",
+                    "video_play_info",
+                    "videoPlayInfo"
+                )?.takeIf { findFirstVideoUrl(it) != null }
+                    ?: node.keys().asSequence().firstNotNullOfOrNull { key ->
+                        findFirstVideoObject(node.opt(key))
+                    }
+            }
+            is JSONArray -> (0 until node.length()).asSequence().firstNotNullOfOrNull { index ->
+                findFirstVideoObject(node.opt(index))
+            }
+            is String -> parseEncodedJsonOrNull(node)?.let { findFirstVideoObject(it) }
             else -> null
         }
     }
@@ -712,6 +800,50 @@ class DouyinApiClient(
 
     private fun JSONObject.matchesAwemeId(awemeId: String): Boolean {
         return firstString("aweme_id", "awemeId", "item_id", "itemId", "group_id", "groupId", "id") == awemeId
+    }
+
+    private fun Any?.containsAwemeIdDeep(awemeId: String): Boolean {
+        return when (this) {
+            is JSONObject -> {
+                if (matchesAwemeId(awemeId)) return true
+                keys().asSequence().any { key ->
+                    val value = opt(key)
+                    when {
+                        value is String && value.contains(awemeId) -> true
+                        value is JSONObject || value is JSONArray -> value.containsAwemeIdDeep(awemeId)
+                        else -> false
+                    }
+                }
+            }
+            is JSONArray -> (0 until length()).any { index -> opt(index).containsAwemeIdDeep(awemeId) }
+            is String -> contains(awemeId)
+            else -> false
+        }
+    }
+
+    private fun logWebPageFallbackDiagnostics(html: String, awemeId: String) {
+        val renderData = extractScriptText(html, "RENDER_DATA")
+        val renderCandidates = renderData?.let { normalizedJsonCandidates(it) }.orEmpty()
+        val renderCandidate = renderCandidates.firstOrNull { it.contains(awemeId) }
+            ?: renderCandidates.maxByOrNull { it.length }
+        val renderJson = renderCandidate?.let { parseJsonOrNull(it) }
+        val renderKeys = (renderJson as? JSONObject)?.keys()?.asSequence()?.take(12)?.joinToString(",").orEmpty()
+        val awemeContext = renderCandidate?.contextAround(awemeId).orEmpty()
+        val directVideoUrl = renderCandidates.firstNotNullOfOrNull { extractVideoUrlFromText(it) }
+        Log.d(
+            TAG,
+            "web page fallback diagnostics: renderRawLen=${renderData?.length ?: 0}, " +
+                "renderJson=${renderJson != null}, renderKeys=$renderKeys, " +
+                "directVideo=${directVideoUrl != null}, awemeContext=${awemeContext.preview(500)}"
+        )
+    }
+
+    private fun String.contextAround(needle: String, radius: Int = 240): String {
+        val index = indexOf(needle)
+        if (index < 0) return ""
+        val start = (index - radius).coerceAtLeast(0)
+        val end = (index + needle.length + radius).coerceAtMost(length)
+        return substring(start, end)
     }
 
     private fun JSONObject.firstJSONObject(vararg keys: String): JSONObject? {
