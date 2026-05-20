@@ -58,8 +58,7 @@ class DouyinApiClient(
     suspend fun requestAwemeDetail(awemeId: String): String? = withContext(Dispatchers.IO) {
         try {
             val unsignedUrl = buildAwemeDetailUrl(awemeId)
-            val query = unsignedUrl.encodedQuery.orEmpty()
-            val xBogus = signatureProvider.generateXBogus(query, userAgent)
+            val xBogus = signatureProvider.generateXBogus(unsignedUrl.toString(), userAgent)
             val signedUrl = unsignedUrl.newBuilder()
                 .addQueryParameter("X-Bogus", xBogus)
                 .build()

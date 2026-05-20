@@ -27,7 +27,7 @@ class SignatureProvider(private val context: Context) {
 
     /**
      * 生成 X-Bogus 签名
-     * @param urlOrQuery 请求的完整 URL 或者 query 部分（Python 里传给 XBogus 的字符串）
+     * @param urlOrQuery 请求的完整 URL，上游 XBogus.build(url) 对完整 URL 签名
      * @param userAgent 当前 UA
      * @return X-Bogus 签名字符串
      */
