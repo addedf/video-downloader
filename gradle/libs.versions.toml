@@ -1,4 +1,6 @@
 [versions]
+# Kotlin & Android
+kotlin = "1.9.22"
 agp = "9.1.1"
 coreKtx = "1.18.0"
 junit = "4.14-SNAPSHOT"
@@ -7,10 +9,11 @@ espressoCore = "3.5.1"
 appcompat = "1.7.1"
 material = "1.10.0"
 
+lifecycle = "2.7.0"
+coroutines  = "1.7.3"
 okhttp = "4.12.0"
 gson = "2.11.0"
-kotlinxCoroutinesAndroid = "1.7.3"
-lifecycleRuntimeKtx = "2.7.0"
+quickjs = "1.0.5"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -20,11 +23,20 @@ androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-co
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
 
-okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
+# Kotlin 协程
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+
+# Lifecycle（ViewModel 协程支持）
+lifecycle-runtime-ktx = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version.ref = "lifecycle" }
+lifecycle-viewmodel-ktx = { module = "androidx.lifecycle:lifecycle-viewmodel-ktx", version.ref = "lifecycle" }
+
+# QuickJS 引擎 - Kotlin 协程封装
+quickjs-kt = { module = "io.github.dokar3:quickjs-kt", version.ref = "quickjs" }
+
+# OkHttp 网络库
+okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
 gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
-kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "kotlinxCoroutinesAndroid" }
-androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycleRuntimeKtx" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
-
