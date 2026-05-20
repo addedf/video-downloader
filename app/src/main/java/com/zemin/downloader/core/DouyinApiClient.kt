@@ -440,6 +440,10 @@ class DouyinApiClient(
         normalizedJsonCandidates(raw).forEach { candidate ->
             findAwemeDetail(candidate, awemeId)?.let { return it }
             extractJSONObjectNearAwemeId(candidate, awemeId)?.let { return it }
+            extractVideoUrlFromText(candidate)?.let { videoUrl ->
+                Log.d(TAG, "web page fallback parser hit: direct video url")
+                return buildMinimalAwemeDetail(awemeId, videoUrl)
+            }
         }
         return null
     }
@@ -479,12 +483,12 @@ class DouyinApiClient(
                     node.optJSONObject("video_info") != null ||
                     node.optJSONObject("videoInfo") != null
                 if (objectAwemeId == awemeId && hasVideo) {
-                    return node
+                    return normalizeAwemeDetail(node, awemeId)
                 }
 
                 node.optJSONObject("aweme_detail")?.let { detail ->
                     if (detail.matchesAwemeId(awemeId) || detail.optJSONObject("video") != null) {
-                        return detail
+                        return normalizeAwemeDetail(detail, awemeId)
                     }
                 }
 
@@ -547,10 +551,181 @@ class DouyinApiClient(
             .replace("\\u003C", "<")
             .replace("\\u003E", ">")
             .replace("\\u0026", "&")
+            .replace("\\u002F", "/")
+            .replace("\\u002f", "/")
+    }
+
+    private fun normalizeAwemeDetail(raw: JSONObject, awemeId: String): JSONObject {
+        val detail = JSONObject(raw.toString())
+        if (detail.optString("aweme_id").isBlank()) {
+            detail.put("aweme_id", detail.firstString("awemeId", "item_id", "itemId", "group_id", "groupId", "id").ifBlank { awemeId })
+        }
+
+        if (detail.optString("desc").isBlank()) {
+            detail.firstString("desc", "description", "title", "caption").takeIf { it.isNotBlank() }?.let {
+                detail.put("desc", it)
+            }
+        }
+
+        detail.firstJSONObject("author", "authorInfo", "authorUser", "user")?.let { author ->
+            val normalizedAuthor = JSONObject(author.toString())
+            if (normalizedAuthor.optString("nickname").isBlank()) {
+                normalizedAuthor.firstString("nickname", "nickName", "name").takeIf { it.isNotBlank() }?.let {
+                    normalizedAuthor.put("nickname", it)
+                }
+            }
+            if (normalizedAuthor.optString("sec_uid").isBlank()) {
+                normalizedAuthor.firstString("sec_uid", "secUid", "uid", "id").takeIf { it.isNotBlank() }?.let {
+                    normalizedAuthor.put("sec_uid", it)
+                }
+            }
+            detail.put("author", normalizedAuthor)
+        }
+
+        detail.firstJSONObject("video", "video_info", "videoInfo")?.let { video ->
+            detail.put("video", normalizeVideo(video))
+        }
+
+        return detail
+    }
+
+    private fun normalizeVideo(raw: JSONObject): JSONObject {
+        val video = JSONObject(raw.toString())
+
+        video.firstJSONObject("play_addr", "playAddr", "play_addr_265", "playAddr265", "download_addr", "downloadAddr")?.let { playAddr ->
+            video.put("play_addr", normalizeAddress(playAddr))
+        }
+
+        if (video.optJSONArray("bit_rate") == null) {
+            video.firstJSONArray("bit_rate", "bitRate", "bit_rate_list", "bitRateList")?.let { bitRate ->
+                val normalizedBitRate = JSONArray()
+                for (index in 0 until bitRate.length()) {
+                    val item = bitRate.optJSONObject(index) ?: continue
+                    val normalizedItem = JSONObject(item.toString())
+                    normalizedItem.firstJSONObject("play_addr", "playAddr", "play_addr_265", "playAddr265")?.let { playAddr ->
+                        normalizedItem.put("play_addr", normalizeAddress(playAddr))
+                    }
+                    if (!normalizedItem.has("bit_rate")) {
+                        normalizedItem.firstString("bit_rate", "bitRate", "qualityBitrate").toIntOrNull()?.let {
+                            normalizedItem.put("bit_rate", it)
+                        }
+                    }
+                    normalizedBitRate.put(normalizedItem)
+                }
+                video.put("bit_rate", normalizedBitRate)
+            }
+        }
+
+        if (video.optLong("duration", 0L) == 0L) {
+            video.firstString("duration", "durationMs", "duration_ms").toLongOrNull()?.let {
+                video.put("duration", it)
+            }
+        }
+
+        video.firstJSONObject("cover", "originCover", "dynamicCover", "animatedCover")?.let { cover ->
+            video.put("cover", normalizeAddress(cover))
+        }
+
+        if (video.optJSONObject("play_addr") == null) {
+            findFirstVideoUrl(video)?.let { url ->
+                video.put("play_addr", JSONObject().put("url_list", JSONArray().put(url)))
+            }
+        }
+
+        return video
+    }
+
+    private fun normalizeAddress(raw: JSONObject): JSONObject {
+        val address = JSONObject(raw.toString())
+        if (address.optJSONArray("url_list") == null) {
+            address.firstJSONArray("url_list", "urlList", "urls")?.let { address.put("url_list", it) }
+        }
+
+        if (address.optJSONArray("url_list") == null) {
+            address.firstString("url", "src", "mainUrl", "backupUrl").takeIf { it.isNotBlank() }?.let {
+                address.put("url_list", JSONArray().put(normalizeVideoUrl(it)))
+            }
+        }
+
+        return address
+    }
+
+    private fun extractVideoUrlFromText(text: String): String? {
+        val urlPattern = Regex("""(?:https?:)?//[^"'<>\\\s]+""")
+        return urlPattern.findAll(unescapeJsString(text))
+            .map { normalizeVideoUrl(it.value) }
+            .firstOrNull { isVideoCandidateUrl(it) }
+    }
+
+    private fun findFirstVideoUrl(node: Any?): String? {
+        return when (node) {
+            is JSONObject -> node.keys().asSequence().firstNotNullOfOrNull { key ->
+                findFirstVideoUrl(node.opt(key))
+            }
+            is JSONArray -> (0 until node.length()).asSequence().firstNotNullOfOrNull { index ->
+                findFirstVideoUrl(node.opt(index))
+            }
+            is String -> {
+                val text = unescapeJsString(node)
+                if (isVideoCandidateUrl(text)) normalizeVideoUrl(text) else extractVideoUrlFromText(text)
+            }
+            else -> null
+        }
+    }
+
+    private fun isVideoCandidateUrl(url: String): Boolean {
+        val normalized = url.lowercase()
+        return normalized.contains("douyinvod.com/") ||
+            normalized.contains("/aweme/v1/play/") ||
+            normalized.contains("/aweme/v1/playwm/")
+    }
+
+    private fun normalizeVideoUrl(url: String): String {
+        val withScheme = if (url.startsWith("//")) "https:$url" else url
+        return withScheme
+            .replace("\\u0026", "&")
+            .replace("\\u002F", "/")
+            .replace("\\u002f", "/")
+            .replace("/playwm/", "/play/")
+    }
+
+    private fun buildMinimalAwemeDetail(awemeId: String, videoUrl: String): JSONObject {
+        return JSONObject()
+            .put("aweme_id", awemeId)
+            .put("desc", "")
+            .put("author", JSONObject())
+            .put(
+                "video",
+                JSONObject()
+                    .put("play_addr", JSONObject().put("url_list", JSONArray().put(videoUrl)))
+                    .put(
+                        "bit_rate",
+                        JSONArray().put(
+                            JSONObject()
+                                .put("bit_rate", 0)
+                                .put("is_watermark", 0)
+                                .put("play_addr", JSONObject().put("url_list", JSONArray().put(videoUrl)))
+                        )
+                    )
+            )
     }
 
     private fun JSONObject.matchesAwemeId(awemeId: String): Boolean {
         return firstString("aweme_id", "awemeId", "item_id", "itemId", "group_id", "groupId", "id") == awemeId
+    }
+
+    private fun JSONObject.firstJSONObject(vararg keys: String): JSONObject? {
+        keys.forEach { key ->
+            optJSONObject(key)?.let { return it }
+        }
+        return null
+    }
+
+    private fun JSONObject.firstJSONArray(vararg keys: String): JSONArray? {
+        keys.forEach { key ->
+            optJSONArray(key)?.let { return it }
+        }
+        return null
     }
 
     private fun JSONObject.firstString(vararg keys: String): String {
