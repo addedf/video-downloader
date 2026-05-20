@@ -15,6 +15,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
 import java.net.URLDecoder
+import java.security.SecureRandom
 import java.util.concurrent.ConcurrentHashMap
 
 class DouyinApiClient(
@@ -30,6 +31,10 @@ class DouyinApiClient(
         private val USER_AGENT_POOL = arrayOf(DEFAULT_USER_AGENT)
         private val DETAIL_AIDS = listOf("6383", "1128")
         private val EMPTY_BODY_RETRY_DELAYS_MS = listOf(1_000L, 2_000L, 5_000L)
+        private const val MS_TOKEN_RANDOM_PART_LENGTH = 182
+        private const val MS_TOKEN_SUFFIX = "=="
+        private const val MS_TOKEN_ALPHABET =
+            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
         fun String?.preview(limit: Int = 800): String {
             if (this == null) return "null"
@@ -49,6 +54,7 @@ class DouyinApiClient(
     private val cookieStore = ConcurrentHashMap<String, String>().apply {
         putAll(cookies)
     }
+    private val secureRandom = SecureRandom()
     private val client: OkHttpClient = OkHttpClient.Builder()
         .cookieJar(object : CookieJar {
             override fun loadForRequest(url: HttpUrl): List<Cookie> {
@@ -211,7 +217,7 @@ class DouyinApiClient(
     }
 
     private fun buildAwemeDetailUrl(awemeId: String, aid: String): HttpUrl {
-        val msToken = cookieStore["msToken"].orEmpty()
+        val msToken = ensureMsToken()
         return HttpUrl.Builder()
             .scheme("https")
             .host("www.douyin.com")
@@ -252,15 +258,31 @@ class DouyinApiClient(
 
     private fun extractAwemeDetailFromHtml(html: String, awemeId: String): JSONObject? {
         extractScriptJson(html, "__UNIVERSAL_DATA_FOR_REHYDRATION__")?.let { json ->
-            findAwemeDetail(json, awemeId)?.let { return it }
+            findAwemeDetail(json, awemeId)?.let {
+                Log.d(TAG, "web page fallback parser hit: __UNIVERSAL_DATA_FOR_REHYDRATION__")
+                return it
+            }
         }
 
         extractScriptJson(html, "RENDER_DATA")?.let { json ->
-            findAwemeDetail(json, awemeId)?.let { return it }
+            findAwemeDetail(json, awemeId)?.let {
+                Log.d(TAG, "web page fallback parser hit: RENDER_DATA json")
+                return it
+            }
+        }
+
+        extractScriptText(html, "RENDER_DATA")?.let { raw ->
+            extractAwemeDetailFromEncodedText(raw, awemeId)?.let {
+                Log.d(TAG, "web page fallback parser hit: RENDER_DATA encoded text")
+                return it
+            }
         }
 
         extractInlineJson(html)?.let { json ->
-            findAwemeDetail(json, awemeId)?.let { return it }
+            findAwemeDetail(json, awemeId)?.let {
+                Log.d(TAG, "web page fallback parser hit: inline json")
+                return it
+            }
         }
 
         return null
@@ -274,7 +296,19 @@ class DouyinApiClient(
         val raw = pattern.find(html)?.groupValues?.getOrNull(1)?.trim().orEmpty()
         if (raw.isBlank()) return null
 
-        return parseJsonOrNull(raw) ?: parseJsonOrNull(urlDecode(raw))
+        return parseEncodedJsonOrNull(raw)
+            ?: run {
+                Log.d(TAG, "extractScriptJson parse failed: id=$scriptId, raw=${raw.preview()}")
+                null
+            }
+    }
+
+    private fun extractScriptText(html: String, scriptId: String): String? {
+        val pattern = Regex(
+            """<script[^>]+id=["']$scriptId["'][^>]*>(.*?)</script>""",
+            setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
+        )
+        return pattern.find(html)?.groupValues?.getOrNull(1)?.trim()?.takeIf { it.isNotBlank() }
     }
 
     private fun extractInlineJson(html: String): Any? {
@@ -363,17 +397,93 @@ class DouyinApiClient(
         }.getOrNull()
     }
 
+    private fun parseEncodedJsonOrNull(raw: String): Any? {
+        normalizedJsonCandidates(raw).forEach { candidate ->
+            parseJsonOrNull(candidate)?.let { return it }
+        }
+        return null
+    }
+
+    private fun normalizedJsonCandidates(raw: String): List<String> {
+        val candidates = linkedSetOf<String>()
+        fun add(value: String?) {
+            val text = value?.trim().orEmpty()
+            if (text.isNotBlank()) candidates.add(text)
+        }
+
+        add(raw)
+        add(htmlEntityDecode(raw))
+        add(urlDecode(raw))
+        add(urlDecode(htmlEntityDecode(raw)))
+        add(unescapeJsString(raw))
+
+        candidates.toList().forEach { candidate ->
+            val decoded = repeatedUrlDecode(candidate)
+            add(decoded)
+            add(unescapeJsString(decoded))
+            stripJsonStringWrapper(candidate)?.let { add(it) }
+        }
+
+        return candidates.toList()
+    }
+
+    private fun stripJsonStringWrapper(value: String): String? {
+        val text = value.trim()
+        if (text.length < 2) return null
+        val first = text.first()
+        val last = text.last()
+        if ((first != '"' && first != '\'') || first != last) return null
+        return unescapeJsString(text.substring(1, text.lastIndex))
+    }
+
+    private fun extractAwemeDetailFromEncodedText(raw: String, awemeId: String): JSONObject? {
+        normalizedJsonCandidates(raw).forEach { candidate ->
+            findAwemeDetail(candidate, awemeId)?.let { return it }
+            extractJSONObjectNearAwemeId(candidate, awemeId)?.let { return it }
+        }
+        return null
+    }
+
+    private fun extractJSONObjectNearAwemeId(text: String, awemeId: String): JSONObject? {
+        var searchIndex = text.indexOf(awemeId)
+        while (searchIndex >= 0) {
+            var objectStart = text.lastIndexOf('{', searchIndex)
+            var attempts = 0
+            while (objectStart >= 0 && attempts < 200) {
+                extractBalancedJsonObject(text, objectStart)?.let { rawObject ->
+                    parseJsonOrNull(rawObject)?.let { parsed ->
+                        findAwemeDetail(parsed, awemeId)?.let { return it }
+                    }
+                }
+                attempts++
+                objectStart = text.lastIndexOf('{', objectStart - 1)
+            }
+            searchIndex = text.indexOf(awemeId, searchIndex + awemeId.length)
+        }
+        return null
+    }
+
     private fun findAwemeDetail(node: Any?, awemeId: String): JSONObject? {
         return when (node) {
             is JSONObject -> {
-                val objectAwemeId = node.optString("aweme_id")
-                val hasVideo = node.optJSONObject("video") != null
+                val objectAwemeId = node.firstString(
+                    "aweme_id",
+                    "awemeId",
+                    "item_id",
+                    "itemId",
+                    "group_id",
+                    "groupId",
+                    "id"
+                )
+                val hasVideo = node.optJSONObject("video") != null ||
+                    node.optJSONObject("video_info") != null ||
+                    node.optJSONObject("videoInfo") != null
                 if (objectAwemeId == awemeId && hasVideo) {
                     return node
                 }
 
                 node.optJSONObject("aweme_detail")?.let { detail ->
-                    if (detail.optString("aweme_id") == awemeId || detail.optJSONObject("video") != null) {
+                    if (detail.matchesAwemeId(awemeId) || detail.optJSONObject("video") != null) {
                         return detail
                     }
                 }
@@ -387,12 +497,44 @@ class DouyinApiClient(
                     findAwemeDetail(node.opt(index), awemeId)
                 }
             }
+            is String -> {
+                if (!node.contains(awemeId)) {
+                    null
+                } else {
+                    parseEncodedJsonOrNull(node)?.let { parsed ->
+                        findAwemeDetail(parsed, awemeId)?.let { return it }
+                    }
+                    extractJSONObjectNearAwemeId(node, awemeId)
+                }
+            }
             else -> null
         }
     }
 
     private fun urlDecode(value: String): String {
         return runCatching { URLDecoder.decode(value, "UTF-8") }.getOrDefault(value)
+    }
+
+    private fun repeatedUrlDecode(value: String): String {
+        var decoded = value
+        repeat(3) {
+            val next = urlDecode(decoded)
+            if (next == decoded) return decoded
+            decoded = next
+        }
+        return decoded
+    }
+
+    private fun htmlEntityDecode(value: String): String {
+        return value
+            .replace("&quot;", "\"")
+            .replace("&#34;", "\"")
+            .replace("&#x22;", "\"")
+            .replace("&#39;", "'")
+            .replace("&#x27;", "'")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&amp;", "&")
     }
 
     private fun unescapeJsString(value: String): String {
@@ -405,6 +547,37 @@ class DouyinApiClient(
             .replace("\\u003C", "<")
             .replace("\\u003E", ">")
             .replace("\\u0026", "&")
+    }
+
+    private fun JSONObject.matchesAwemeId(awemeId: String): Boolean {
+        return firstString("aweme_id", "awemeId", "item_id", "itemId", "group_id", "groupId", "id") == awemeId
+    }
+
+    private fun JSONObject.firstString(vararg keys: String): String {
+        keys.forEach { key ->
+            val value = optString(key)
+            if (value.isNotBlank()) return value
+        }
+        return ""
+    }
+
+    private fun ensureMsToken(): String {
+        val existing = cookieStore["msToken"]?.trim().orEmpty()
+        if (existing.isNotBlank()) return existing
+
+        val fallback = generateFallbackMsToken()
+        cookieStore["msToken"] = fallback
+        Log.d(TAG, "ensureMsToken: generated fallback msToken length=${fallback.length}")
+        return fallback
+    }
+
+    private fun generateFallbackMsToken(): String {
+        return buildString(MS_TOKEN_RANDOM_PART_LENGTH + MS_TOKEN_SUFFIX.length) {
+            repeat(MS_TOKEN_RANDOM_PART_LENGTH) {
+                append(MS_TOKEN_ALPHABET[secureRandom.nextInt(MS_TOKEN_ALPHABET.length)])
+            }
+            append(MS_TOKEN_SUFFIX)
+        }
     }
 
     private fun extractMsToken(html: String): String? {
