@@ -12,6 +12,7 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.zemin.downloader.core.DownloadEngine
 import com.zemin.downloader.core.DownloadProgress
+import com.zemin.downloader.ui.MainActivity
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collectLatest
 import okhttp3.OkHttpClient
@@ -29,7 +30,6 @@ class DownloadService : Service() {
         const val EXTRA_HEADERS = "headers_map"
         const val NOTIFICATION_ID = 1001
 
-        // 静态方法：启动服务
         fun start(
             context: Context,
             videoUrl: String,
@@ -61,10 +61,7 @@ class DownloadService : Service() {
     }
 
     private fun startDownload(url: String, filePath: String, headers: Map<String, String>) {
-        // 创建通知
         createNotification()
-
-        // 启动前台服务
         startForeground(NOTIFICATION_ID, notificationBuilder!!.build())
 
         downloadJob = serviceScope.launch {
@@ -73,9 +70,7 @@ class DownloadService : Service() {
 
             engine.downloadFile(url, file, headers).collectLatest { progress ->
                 when (progress) {
-                    is DownloadProgress.Progress -> {
-                        updateNotification(progress.bytes, progress.total)
-                    }
+                    is DownloadProgress.Progress -> updateNotification(progress.bytes, progress.total)
                     is DownloadProgress.Success -> {
                         showCompleteNotification(progress.file)
                         stopSelf()
@@ -91,12 +86,9 @@ class DownloadService : Service() {
 
     private fun createNotification() {
         val pendingIntent = PendingIntent.getActivity(
-            this,
-            0,
-            Intent(this, MainActivity::class.java),
+            this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-
         notificationBuilder = NotificationCompat.Builder(this, NotificationHelper.CHANNEL_ID)
             .setContentTitle("正在下载视频")
             .setContentText("准备中...")
@@ -104,7 +96,7 @@ class DownloadService : Service() {
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
             .setContentIntent(pendingIntent)
-            .setProgress(0, 0, true) // 不确定进度
+            .setProgress(0, 0, true)
     }
 
     private fun updateNotification(bytesDownloaded: Long, totalBytes: Long) {
@@ -113,9 +105,8 @@ class DownloadService : Service() {
             setContentText("${formatSize(bytesDownloaded)} / ${formatSize(totalBytes)} ($percent%)")
             setProgress(100, percent, false)
         }
-        val notification = notificationBuilder?.build() ?: return
         val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        manager.notify(NOTIFICATION_ID, notification)
+        manager.notify(NOTIFICATION_ID, notificationBuilder?.build())
     }
 
     private fun showCompleteNotification(file: File) {
@@ -126,9 +117,8 @@ class DownloadService : Service() {
             setOngoing(false)
             setSmallIcon(R.drawable.stat_sys_download_done)
         }
-        val notification = notificationBuilder?.build() ?: return
         val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        manager.notify(NOTIFICATION_ID, notification)
+        manager.notify(NOTIFICATION_ID, notificationBuilder?.build())
     }
 
     private fun showErrorNotification(errorMsg: String) {
@@ -139,9 +129,8 @@ class DownloadService : Service() {
             setOngoing(false)
             setSmallIcon(R.drawable.stat_notify_error)
         }
-        val notification = notificationBuilder?.build() ?: return
         val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        manager.notify(NOTIFICATION_ID, notification)
+        manager.notify(NOTIFICATION_ID, notificationBuilder?.build())
     }
 
     private fun formatSize(bytes: Long): String {

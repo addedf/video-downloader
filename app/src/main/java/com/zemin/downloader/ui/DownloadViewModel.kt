@@ -1,7 +1,11 @@
-// ui/DownloadViewModel.kt (追加内容)
+// ui/DownloadViewModel.kt
 package com.zemin.downloader.ui
 
 import android.app.Application
+import android.content.pm.PackageManager
+import android.os.Build
+import android.Manifest
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.zemin.downloader.core.CookieStorage
@@ -11,21 +15,19 @@ import com.zemin.downloader.core.DownloadProgress
 import com.zemin.downloader.core.SignatureProvider
 import com.zemin.downloader.core.StorageManager
 import com.zemin.downloader.core.VideoParser
-import com.zemin.downloader.download.DownloadService
 import com.zemin.downloader.download.DownloadUiState
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
+import okhttp3.Request
 
 class DownloadViewModel(application: Application) : AndroidViewModel(application) {
 
     private val signatureProvider = SignatureProvider(application).also {
         viewModelScope.launch { it.preload() }
     }
-
     private val cookieStorage = CookieStorage(application)
     private val okHttpClient = OkHttpClient()
     private val storageManager = StorageManager(application)
@@ -44,6 +46,10 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
 
     init {
         checkLoginStatus()
+        // 预加载签名 JS
+        viewModelScope.launch {
+            signatureProvider.preload()
+        }
     }
 
     fun checkLoginStatus() {
@@ -60,7 +66,6 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
         checkLoginStatus()
     }
 
-    // ui/DownloadViewModel.kt 中的下载方法改为：
     fun downloadVideo(awemeId: String) {
         viewModelScope.launch {
             val cookiesMap = cookieStorage.getCookiesMap()
@@ -69,42 +74,76 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
                 return@launch
             }
 
+            // 检查存储权限 (Android 10 以下)
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                val context = getApplication<Application>()
+                if (ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                    != PackageManager.PERMISSION_GRANTED) {
+                    _downloadState.value = DownloadUiState.Error("缺少存储权限")
+                    return@launch
+                }
+            }
+
             _downloadState.value = DownloadUiState.Downloading
+            val apiClient = DouyinApiClient(cookiesMap, signatureProvider)
+            val downloadEngine = DownloadEngine(okHttpClient)
 
             try {
-                // 1. 获取视频详情和无水印 URL
-                val apiClient = DouyinApiClient(cookiesMap, signatureProvider)
+                // 1. 获取视频详情
                 val json = apiClient.requestAwemeDetail(awemeId)
-                    ?: throw Exception("获取视频信息失败")
-                val video = VideoParser.parseAwemeDetail(json)
-                    ?: throw Exception("解析视频信息失败")
+                if (json == null) {
+                    _downloadState.value = DownloadUiState.Error("获取视频信息失败")
+                    return@launch
+                }
 
-                // 2. 准备输出文件
+                // 2. 解析视频信息
+                val video = VideoParser.parseAwemeDetail(json)
+                if (video == null) {
+                    _downloadState.value = DownloadUiState.Error("解析视频信息失败")
+                    return@launch
+                }
+
+                // 3. 准备输出文件
                 val fileName = "douyin_${video.awemeId}_${System.currentTimeMillis()}.mp4"
                 val outputFile = storageManager.getVideoOutputFile(fileName)
 
-                // 3. 构建请求头
+                // 4. 下载视频
                 val headers = mapOf(
-                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ...",
+                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
                     "Referer" to "https://www.douyin.com/"
                 )
-
-                // 4. 启动前台服务进行下载（不再阻塞 ViewModel 协程，进度由 Service 通知）
-                val context = getApplication<android.app.Application>()
-                DownloadService.start(context, video.videoUrl, outputFile.absolutePath, headers)
-
-                // 状态更新交由 Service 完成后的回调（这里可以监听 Service 的广播或手动更新）
-                // 简单的处理：暂时留在 Downloading 状态，下载完成通知由 Notification 展示。
-                // 若需要 UI 状态同步，可后续通过 BroadcastReceiver 或事件总线完成。
+                downloadEngine.downloadFile(video.videoUrl, outputFile, headers).collect { progress ->
+                    _progressEvents.emit(progress)
+                    when (progress) {
+                        is DownloadProgress.Success -> {
+                            storageManager.registerToMediaStore(progress.file)
+                            _downloadState.value = DownloadUiState.Completed(progress.file)
+                        }
+                        is DownloadProgress.Error -> _downloadState.value = DownloadUiState.Error(progress.exception.message ?: "下载失败")
+                        else -> {}
+                    }
+                }
             } catch (e: Exception) {
-                _downloadState.value = DownloadUiState.Error(e.message ?: "下载失败")
+                _downloadState.value = DownloadUiState.Error(e.message ?: "未知错误")
             }
         }
     }
 
     private fun isCookieValid(cookieString: String): Boolean {
-        // 检查关键字段是否存在
         return cookieString.contains("sessionid") || cookieString.contains("passport_csrf_token")
+    }
+
+    // 短链接解析
+    private suspend fun resolveShortUrl(shortUrl: String): String? {
+        return withContext(Dispatchers.IO) {
+            try {
+                val client = OkHttpClient.Builder().followRedirects(false).build()
+                val response = client.newCall(Request.Builder().url(shortUrl).build()).execute()
+                response.header("Location")
+            } catch (e: Exception) {
+                null
+            }
+        }
     }
 }
 

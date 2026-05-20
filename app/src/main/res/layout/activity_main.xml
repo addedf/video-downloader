@@ -6,25 +6,41 @@
     android:padding="16dp">
 
     <TextView
+        android:id="@+id/tvLoginState"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="未登录"
+        android:textSize="14sp" />
+
+    <Button
+        android:id="@+id/btnLogin"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="登录抖音" />
+
+    <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="抖音视频链接"
+        android:layout_marginTop="16dp"
+        android:text="抖音分享文本或链接"
         android:textSize="16sp" />
 
     <EditText
         android:id="@+id/etUrl"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:hint="粘贴分享链接到这里"
-        android:inputType="textUri"
-        android:singleLine="true" />
+        android:layout_height="120dp"
+        android:gravity="top"
+        android:hint="粘贴抖音分享文本，最好包含 https://v.douyin.com/ 短链"
+        android:inputType="textMultiLine"
+        android:maxLines="5" />
 
     <Button
         android:id="@+id/btnDownload"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
-        android:text="下载" />
+        android:text="解析并下载" />
 
     <ProgressBar
         android:id="@+id/progressBar"
@@ -37,7 +53,7 @@
 
     <TextView
         android:id="@+id/tvStatus"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
         android:text="等待输入"
@@ -45,11 +61,11 @@
 
     <TextView
         android:id="@+id/tvInfo"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
         android:text=""
-        android:textSize="12sp"
-        android:textColor="#666666" />
+        android:textColor="#666666"
+        android:textSize="12sp" />
 
 </LinearLayout>

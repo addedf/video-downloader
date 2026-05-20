@@ -4,6 +4,7 @@ import android.content.Context
 import com.dokar.quickjs.quickJs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
 /**
  * 签名提供器
@@ -38,9 +39,7 @@ class SignatureProvider(private val context: Context) {
                 evaluate<Any?>(lib)
 
                 // 调用 XBogus.sign(query, userAgent)
-                val jsCall = """
-                    XBogus.sign("$urlOrQuery", "$userAgent")
-                """.trimIndent()
+                val jsCall = "XBogus.sign(${JSONObject.quote(urlOrQuery)}, ${JSONObject.quote(userAgent)})"
 
                 evaluate<String>(jsCall)
             }
@@ -66,12 +65,10 @@ class SignatureProvider(private val context: Context) {
 
                 // 将 Map 转为 JS 对象字符串
                 val paramsJson = params.entries.joinToString(", ") { (k, v) ->
-                    """"$k": "$v""""
+                    "${JSONObject.quote(k)}: ${JSONObject.quote(v)}"
                 }.let { "{$it}" }
 
-                val jsCall = """
-                    ABogus.sign($paramsJson, "$userAgent", $timestamp)
-                """.trimIndent()
+                val jsCall = "ABogus.sign($paramsJson, ${JSONObject.quote(userAgent)}, $timestamp)"
 
                 evaluate<String>(jsCall)
             }
