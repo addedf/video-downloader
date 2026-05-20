@@ -75,7 +75,6 @@ class DouyinApiClient(
                 .header("User-Agent", userAgent)
                 .header("Referer", "$BASE_URL/?recommend=1")
                 .header("Accept", "*/*")
-                .header("Accept-Encoding", "gzip, deflate")
                 .header("Accept-Language", "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7")
                 .header("Cache-Control", "no-cache")
                 .build()
@@ -135,6 +134,12 @@ class DouyinApiClient(
                     return@runCatching null
                 }
                 Log.d(TAG, "web page fallback html preview: ${html.preview()}")
+                Log.d(
+                    TAG,
+                    "web page fallback markers: universal=${html.contains("__UNIVERSAL_DATA_FOR_REHYDRATION__")}, " +
+                        "render=${html.contains("RENDER_DATA")}, initial=${html.contains("__INITIAL_STATE__")}, " +
+                        "pace=${html.contains("__pace_f")}, aweme=${html.contains(awemeId)}"
+                )
 
                 extractAwemeDetailFromHtml(html, awemeId)?.let { detail ->
                     Log.d(TAG, "web page fallback success: awemeId=$awemeId")
@@ -273,14 +278,77 @@ class DouyinApiClient(
     }
 
     private fun extractInlineJson(html: String): Any? {
-        val markerPatterns = listOf(
-            Regex("""window\.__INITIAL_STATE__\s*=\s*(\{.*?})\s*</script>""", RegexOption.DOT_MATCHES_ALL),
-            Regex("""self\.__pace_f.push\(\[1,\s*"(.*?)"\]\)""", RegexOption.DOT_MATCHES_ALL)
-        )
-        return markerPatterns.firstNotNullOfOrNull { pattern ->
-            val raw = pattern.find(html)?.groupValues?.getOrNull(1) ?: return@firstNotNullOfOrNull null
-            parseJsonOrNull(raw) ?: parseJsonOrNull(unescapeJsString(raw))
+        extractAssignedJson(html, "window.__INITIAL_STATE__")?.let { raw ->
+            parseJsonOrNull(raw)?.let { return it }
         }
+
+        val pacePattern = Regex(
+            """self\.__pace_f\.push\(\[1,\s*"((?:\\.|[^"\\])*)"\]\)""",
+            RegexOption.DOT_MATCHES_ALL
+        )
+        pacePattern.findAll(html).forEach { match ->
+            val decoded = unescapeJsString(match.groupValues[1])
+            parseJsonOrNull(decoded)?.let { return it }
+            extractFirstJsonObject(decoded)?.let { raw ->
+                parseJsonOrNull(raw)?.let { return it }
+            }
+        }
+
+        return null
+    }
+
+    private fun extractAssignedJson(html: String, assignmentName: String): String? {
+        val assignmentIndex = html.indexOf(assignmentName)
+        if (assignmentIndex < 0) return null
+
+        val equalsIndex = html.indexOf('=', assignmentIndex)
+        if (equalsIndex < 0) return null
+
+        val objectStartIndex = html.indexOf('{', equalsIndex)
+        if (objectStartIndex < 0) return null
+
+        return extractBalancedJsonObject(html, objectStartIndex)
+    }
+
+    private fun extractFirstJsonObject(text: String): String? {
+        val objectStartIndex = text.indexOf('{')
+        if (objectStartIndex < 0) return null
+        return extractBalancedJsonObject(text, objectStartIndex)
+    }
+
+    private fun extractBalancedJsonObject(text: String, startIndex: Int): String? {
+        var depth = 0
+        var inString = false
+        var quoteChar = '"'
+        var escaped = false
+
+        for (index in startIndex until text.length) {
+            val char = text[index]
+            if (inString) {
+                when {
+                    escaped -> escaped = false
+                    char == '\\' -> escaped = true
+                    char == quoteChar -> inString = false
+                }
+                continue
+            }
+
+            when (char) {
+                '"', '\'' -> {
+                    inString = true
+                    quoteChar = char
+                }
+                '{' -> depth++
+                '}' -> {
+                    depth--
+                    if (depth == 0) {
+                        return text.substring(startIndex, index + 1)
+                    }
+                }
+            }
+        }
+
+        return null
     }
 
     private fun parseJsonOrNull(raw: String): Any? {
