@@ -2,6 +2,7 @@ package com.zemin.downloader.core
 
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.Cookie
 import okhttp3.CookieJar
@@ -12,6 +13,7 @@ import okhttp3.Request
 import okhttp3.Response
 import java.io.IOException
 import java.util.Random
+import java.util.concurrent.ConcurrentHashMap
 
 class DouyinApiClient(
     private val cookies: Map<String, String>,
@@ -27,6 +29,8 @@ class DouyinApiClient(
             DEFAULT_USER_AGENT,
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
         )
+        private val DETAIL_AIDS = listOf("6383", "1128")
+        private val EMPTY_BODY_RETRY_DELAYS_MS = listOf(1_000L, 2_000L, 5_000L)
 
         fun String?.preview(limit: Int = 800): String {
             if (this == null) return "null"
@@ -43,10 +47,13 @@ class DouyinApiClient(
     }
 
     private val userAgent: String = USER_AGENT_POOL[Random().nextInt(USER_AGENT_POOL.size)]
+    private val cookieStore = ConcurrentHashMap<String, String>().apply {
+        putAll(cookies)
+    }
     private val client: OkHttpClient = OkHttpClient.Builder()
         .cookieJar(object : CookieJar {
             override fun loadForRequest(url: HttpUrl): List<Cookie> {
-                return cookies.mapNotNull { (name, value) ->
+                return cookieStore.mapNotNull { (name, value) ->
                     runCatching {
                         Cookie.Builder()
                             .name(name)
@@ -58,7 +65,11 @@ class DouyinApiClient(
                 }
             }
 
-            override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) = Unit
+            override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
+                cookies.forEach { cookie ->
+                    cookieStore[cookie.name] = cookie.value
+                }
+            }
         })
         .addInterceptor { chain ->
             val request = chain.request().newBuilder()
@@ -76,33 +87,27 @@ class DouyinApiClient(
     suspend fun requestAwemeDetail(awemeId: String): String? = withContext(Dispatchers.IO) {
         try {
             Log.d(TAG, "requestAwemeDetail: awemeId = $awemeId")
-            val unsignedUrl = buildAwemeDetailUrl(awemeId)
-            val xBogus = signatureProvider.generateXBogus(unsignedUrl.toString(), userAgent)
-            val signedUrl = unsignedUrl.newBuilder()
-                .addQueryParameter("X-Bogus", xBogus)
-                .build()
+            warmUpCookiesIfNeeded()
 
-            val request = Request.Builder()
-                .url(signedUrl)
-                .get()
-                .build()
-
-            client.newCall(request).execute().use { response ->
-                val responseBody = response.body?.string()
-                if (!response.isSuccessful) {
-                    Log.w(
-                        TAG,
-                        "requestAwemeDetail failed: code=${response.code}, message=${response.message}, body=${responseBody.preview()}"
-                    )
-                    return@withContext null
+            DETAIL_AIDS.forEach { aid ->
+                EMPTY_BODY_RETRY_DELAYS_MS.forEachIndexed { attemptIndex, retryDelayMs ->
+                    val result = requestAwemeDetailOnce(awemeId, aid, attemptIndex + 1)
+                    when (result) {
+                        is DetailResult.Success -> return@withContext result.body
+                        is DetailResult.NonRetryableFailure -> return@withContext null
+                        is DetailResult.EmptyBody -> {
+                            Log.w(
+                                TAG,
+                                "requestAwemeDetail empty body: aid=$aid, attempt=${attemptIndex + 1}, retryDelayMs=$retryDelayMs"
+                            )
+                            delay(retryDelayMs)
+                        }
+                    }
                 }
-                if (responseBody.isNullOrBlank()) {
-                    Log.w(TAG, "requestAwemeDetail failed: empty response body")
-                    return@withContext null
-                }
-                Log.d(TAG, "requestAwemeDetail success: body=${responseBody.preview()}")
-                responseBody
             }
+
+            Log.w(TAG, "requestAwemeDetail failed: all aid/retry attempts returned empty body")
+            null
         } catch (e: IOException) {
             Log.e(TAG, "requestAwemeDetail: IOException = ${e.message}", e)
             null
@@ -112,22 +117,76 @@ class DouyinApiClient(
         }
     }
 
-    private fun buildAwemeDetailUrl(awemeId: String): HttpUrl {
-        val msToken = cookies["msToken"] ?: generateMsToken()
+    private suspend fun requestAwemeDetailOnce(
+        awemeId: String,
+        aid: String,
+        attempt: Int
+    ): DetailResult {
+        val unsignedUrl = buildAwemeDetailUrl(awemeId, aid)
+        val xBogus = signatureProvider.generateXBogus(unsignedUrl.toString(), userAgent)
+        val signedUrl = unsignedUrl.newBuilder()
+            .addQueryParameter("X-Bogus", xBogus)
+            .build()
+
+        val request = Request.Builder()
+            .url(signedUrl)
+            .get()
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            val responseBody = response.body?.string()
+            if (!response.isSuccessful) {
+                Log.w(
+                    TAG,
+                    "requestAwemeDetail failed: aid=$aid, attempt=$attempt, code=${response.code}, message=${response.message}, body=${responseBody.preview()}"
+                )
+                return DetailResult.NonRetryableFailure
+            }
+            if (responseBody.isNullOrBlank()) {
+                return DetailResult.EmptyBody
+            }
+            Log.d(TAG, "requestAwemeDetail success: aid=$aid, attempt=$attempt, body=${responseBody.preview()}")
+            return DetailResult.Success(responseBody)
+        }
+    }
+
+    private fun warmUpCookiesIfNeeded() {
+        if (!cookieStore["msToken"].isNullOrBlank()) return
+
+        runCatching {
+            val request = Request.Builder()
+                .url("$BASE_URL/?recommend=1")
+                .get()
+                .build()
+            client.newCall(request).execute().use { response ->
+                response.body?.close()
+                Log.d(
+                    TAG,
+                    "warmUpCookiesIfNeeded: code=${response.code}, msTokenPresent=${!cookieStore["msToken"].isNullOrBlank()}"
+                )
+            }
+        }.onFailure { error ->
+            Log.w(TAG, "warmUpCookiesIfNeeded failed: ${error.message}", error)
+        }
+    }
+
+    private fun buildAwemeDetailUrl(awemeId: String, aid: String): HttpUrl {
+        val msToken = cookieStore["msToken"] ?: generateMsToken()
         return HttpUrl.Builder()
             .scheme("https")
             .host("www.douyin.com")
             .encodedPath("/aweme/v1/web/aweme/detail/")
             .addQueryParameter("device_platform", "webapp")
-            .addQueryParameter("aid", "6383")
+            .addQueryParameter("aid", aid)
             .addQueryParameter("channel", "channel_pc_web")
             .addQueryParameter("aweme_id", awemeId)
             .addQueryParameter("pc_client_type", "1")
-            .addQueryParameter("version_code", "190500")
-            .addQueryParameter("version_name", "19.5.0")
+            .addQueryParameter("version_code", "290100")
+            .addQueryParameter("version_name", "29.1.0")
+            .addQueryParameter("update_version_code", "170400")
             .addQueryParameter("cookie_enabled", "true")
-            .addQueryParameter("screen_width", "1920")
-            .addQueryParameter("screen_height", "1080")
+            .addQueryParameter("screen_width", "1536")
+            .addQueryParameter("screen_height", "864")
             .addQueryParameter("browser_language", "zh-CN")
             .addQueryParameter("browser_platform", "Win32")
             .addQueryParameter("browser_name", "Chrome")
@@ -137,12 +196,16 @@ class DouyinApiClient(
             .addQueryParameter("engine_version", "139.0.0.0")
             .addQueryParameter("os_name", "Windows")
             .addQueryParameter("os_version", "10")
+            .addQueryParameter("pc_libra_divert", "Windows")
             .addQueryParameter("cpu_core_num", "8")
             .addQueryParameter("device_memory", "8")
             .addQueryParameter("platform", "PC")
             .addQueryParameter("downlink", "10")
             .addQueryParameter("effective_type", "4g")
-            .addQueryParameter("round_trip_time", "50")
+            .addQueryParameter("round_trip_time", "200")
+            .addQueryParameter("support_h265", "1")
+            .addQueryParameter("support_dash", "1")
+            .addQueryParameter("uifid", cookieStore["UIFID"].orEmpty())
             .addQueryParameter("msToken", msToken)
             .build()
     }
@@ -188,4 +251,9 @@ class DouyinApiClient(
         }
     }
 
+    private sealed class DetailResult {
+        data class Success(val body: String) : DetailResult()
+        object EmptyBody : DetailResult()
+        object NonRetryableFailure : DetailResult()
+    }
 }
