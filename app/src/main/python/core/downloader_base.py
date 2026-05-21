@@ -3,7 +3,7 @@ import re
 from abc import ABC, abstractmethod
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Protocol, Tuple
 from urllib.parse import urlparse
 
 from auth import CookieManager
@@ -24,7 +24,7 @@ from utils.naming import (
 logger = setup_logger("BaseDownloader")
 
 
-class ProgressReporter:
+class ProgressReporter(Protocol):
     def update_step(self, step: str, detail: str = "") -> None: ...
 
     def set_item_total(self, total: int, detail: str = "") -> None: ...
@@ -68,7 +68,7 @@ class BaseDownloader(ABC):
         self.progress_reporter = progress_reporter
         self.metadata_handler = MetadataHandler()
         self.transcript_manager = TranscriptManager(self.config, self.file_manager, self.database)
-        self._local_aweme_ids: Optional[Set[str]] = None
+        self._local_aweme_ids: Optional[set[str]] = None
         self._aweme_id_pattern = re.compile(r"(?<!\d)(\d{15,20})(?!\d)")
         self._local_media_suffixes = {
             ".mp4",
@@ -185,7 +185,7 @@ class BaseDownloader(ABC):
 
     def _build_local_aweme_index(self):
         base_path = self.file_manager.base_path
-        aweme_ids: Set[str] = set()
+        aweme_ids: set[str] = set()
 
         if base_path.exists():
             for path in base_path.rglob("*"):
@@ -365,7 +365,7 @@ class BaseDownloader(ABC):
                 return False
 
             for index, candidates in enumerate(image_url_candidates, start=1):
-                download_result: Union[bool, Path] = False
+                download_result: bool | Path = False
                 for image_url in candidates:
                     suffix = self._infer_image_extension(image_url)
                     image_path = save_dir / f"{file_stem}_{index}{suffix}"
@@ -424,7 +424,19 @@ class BaseDownloader(ABC):
 
         comments_cfg = self.config.get("comments") or {}
         if isinstance(comments_cfg, dict) and comments_cfg.get("enabled"):
-            logger.info("Comments collection is disabled in Android Chaquopy build")
+            from core.comments_collector import CommentsCollector
+
+            collector = CommentsCollector(
+                self.api_client,
+                self.metadata_handler,
+                include_replies=bool(comments_cfg.get("include_replies", False)),
+                max_comments=int(comments_cfg.get("max_comments", 0) or 0),
+                page_size=int(comments_cfg.get("page_size", 20) or 20),
+            )
+            comments_path = save_dir / f"{file_stem}_comments.json"
+            saved = await collector.collect_and_save(aweme_id, comments_path)
+            if saved is not None:
+                downloaded_files.append(comments_path)
 
         author = aweme_data.get("author", {})
         if self.database:
@@ -499,7 +511,7 @@ class BaseDownloader(ABC):
         optional: bool = False,
         prefer_response_content_type: bool = False,
         return_saved_path: bool = False,
-    ) -> Union[bool, Path]:
+    ) -> bool | Path:
         async def _task():
             download_result = await self.file_manager.download_file(
                 url,
@@ -703,7 +715,7 @@ class BaseDownloader(ABC):
     @staticmethod
     def _deduplicate_urls(urls: List[str]) -> List[str]:
         deduped: List[str] = []
-        seen: Set[str] = set()
+        seen: set[str] = set()
         for url in urls:
             if not url or url in seen:
                 continue
@@ -722,7 +734,7 @@ class BaseDownloader(ABC):
     @staticmethod
     def _collect_media_urls(*sources: Any) -> List[str]:
         urls: List[str] = []
-        seen: Set[str] = set()
+        seen: set[str] = set()
         for source in sources:
             for candidate in sorted(
                 BaseDownloader._extract_urls(source),

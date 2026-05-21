@@ -178,8 +178,7 @@ class FileManager:
                             expected_size,
                             written,
                         )
-                        if tmp_path.exists():
-                            tmp_path.unlink()
+                        tmp_path.unlink(missing_ok=True)
                         return False
                     os.replace(str(tmp_path), str(final_path))
                     return final_path if return_saved_path else True
@@ -192,8 +191,7 @@ class FileManager:
                     return False
         except Exception as e:
             logger.debug("Download error for %s: %s", final_path.name, e)
-            if tmp_path.exists():
-                tmp_path.unlink()
+            tmp_path.unlink(missing_ok=True)
             return False
         finally:
             if should_close:

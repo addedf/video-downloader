@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from core.downloader_base import DownloadResult
 from utils.logger import setup_logger
@@ -23,7 +23,7 @@ class BaseUserModeStrategy(ABC):
         self,
         sec_uid: str,
         user_info: Dict[str, Any],
-        seen_aweme_ids: Optional[Set[str]] = None,
+        seen_aweme_ids: Optional[set[str]] = None,
     ) -> DownloadResult:
         items = await self.collect_items(sec_uid, user_info)
         items = self.apply_filters(items)
@@ -179,7 +179,7 @@ class BaseUserModeStrategy(ABC):
             return []
 
         expanded: List[Dict[str, Any]] = []
-        seen_aweme: Set[str] = set()
+        seen_aweme: set[str] = set()
 
         for item in raw_items:
             entry_id = item.get(id_field)

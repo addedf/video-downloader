@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List
 
 from core.user_modes.base_strategy import BaseUserModeStrategy
 from utils.logger import setup_logger
@@ -24,7 +24,7 @@ class CollectUserModeStrategy(BaseUserModeStrategy):
 
         raw_collects = await self._collect_paged_entries(fetch_collects, sec_uid)
         expanded: List[Dict[str, Any]] = []
-        seen_aweme: Set[str] = set()
+        seen_aweme: set[str] = set()
 
         for collect_item in raw_collects:
             collects_id = self._extract_collects_id(collect_item)

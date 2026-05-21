@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List
 
 from core.user_modes.base_strategy import BaseUserModeStrategy
 from utils.logger import setup_logger
@@ -42,7 +42,7 @@ class CollectMixUserModeStrategy(BaseUserModeStrategy):
             return expanded_items
 
         merged_items: List[Dict[str, Any]] = []
-        seen_aweme_ids: Set[str] = set()
+        seen_aweme_ids: set[str] = set()
         for item in aweme_items + expanded_items:
             aweme_id = str(item.get("aweme_id") or "")
             if not aweme_id or aweme_id in seen_aweme_ids:

@@ -176,8 +176,8 @@ class XBogus:
             xor_result ^= value
         new_array.append(xor_result)
 
-        array3: List[int] = []
-        array4: List[int] = []
+        array3: list[int] = []
+        array4: list[int] = []
         idx = 0
         while idx < len(new_array):
             value = new_array[idx]

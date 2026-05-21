@@ -3,7 +3,7 @@ import logging
 import os
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional
 
 import yaml
 
@@ -285,7 +285,7 @@ class ConfigLoader:
             )
 
         unique: List[Path] = []
-        seen: Set[str] = set()
+        seen: set[str] = set()
         for candidate in candidates:
             resolved = str(candidate.resolve())
             if resolved in seen:

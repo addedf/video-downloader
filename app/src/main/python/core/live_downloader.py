@@ -250,8 +250,7 @@ class LiveDownloader(BaseDownloader):
             if bytes_written <= 0:
                 # 零字节也尝试清理 .tmp
                 try:
-                    if tmp_path.exists():
-                        tmp_path.unlink()
+                    tmp_path.unlink(missing_ok=True)
                 except Exception:
                     pass
                 return False
