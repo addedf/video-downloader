@@ -1,5 +1,6 @@
 plugins {
     alias(libs.plugins.android.application)
+    alias(libs.plugins.chaquopy)
 }
 
 android {
@@ -18,6 +19,10 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        ndk {
+            abiFilters += listOf("arm64-v8a", "x86_64")
+        }
     }
 
     buildTypes {
@@ -55,10 +60,18 @@ dependencies {
     implementation(libs.lifecycle.runtime.ktx)
     implementation(libs.lifecycle.viewmodel.ktx)
 
-    // OkHttp
-    implementation(libs.okhttp)
-    implementation(libs.gson)
+}
 
-    // QuickJS 引擎（签名逻辑核心）
-    implementation(libs.quickjs.kt)
+chaquopy {
+    defaultConfig {
+        version = "3.11"
+        pip {
+            install("aiohttp>=3.9.0")
+            install("aiofiles>=23.2.1")
+            install("aiosqlite>=0.19.0")
+            install("pyyaml>=6.0.1")
+            install("python-dateutil>=2.8.2")
+            install("gmssl>=3.2.2")
+        }
+    }
 }

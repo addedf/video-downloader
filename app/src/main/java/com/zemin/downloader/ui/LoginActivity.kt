@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.os.Bundle
 import android.view.ViewGroup
 import android.webkit.CookieManager
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
@@ -13,9 +14,14 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.zemin.downloader.core.CookieStorage
-import com.zemin.downloader.core.DouyinApiClient
 
 class LoginActivity : AppCompatActivity() {
+
+    private companion object {
+        private const val DEFAULT_USER_AGENT =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
+    }
 
     private lateinit var webView: WebView
     private lateinit var cookieStorage: CookieStorage
@@ -41,7 +47,8 @@ class LoginActivity : AppCompatActivity() {
             )
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
-            settings.userAgentString = DouyinApiClient.DEFAULT_USER_AGENT
+            settings.cacheMode = WebSettings.LOAD_DEFAULT
+            settings.userAgentString = DEFAULT_USER_AGENT
 
             webViewClient = object : WebViewClient() {
                 override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
