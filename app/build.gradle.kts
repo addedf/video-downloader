@@ -38,7 +38,7 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
-    packagingOptions {
+    packaging {
         jniLibs {
             useLegacyPackaging = true
         }
@@ -64,7 +64,8 @@ dependencies {
 
 chaquopy {
     defaultConfig {
-        version = "3.11"
+        version = "3.10"
+        providers.gradleProperty("chaquopy.buildPython").orNull?.let { buildPython(it) }
         pip {
             install("aiohttp>=3.9.0")
             install("aiofiles>=23.2.1")
