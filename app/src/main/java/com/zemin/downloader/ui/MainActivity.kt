@@ -31,6 +31,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var etUrl: EditText
     private lateinit var btnLogin: Button
     private lateinit var btnDownload: Button
+    private lateinit var btnClear: Button
     private lateinit var progressBar: ProgressBar
     private lateinit var tvLoginState: TextView
     private lateinit var tvStatus: TextView
@@ -64,6 +65,7 @@ class MainActivity : AppCompatActivity() {
         etUrl = findViewById(R.id.etUrl)
         btnLogin = findViewById(R.id.btnLogin)
         btnDownload = findViewById(R.id.btnDownload)
+        btnClear = findViewById(R.id.btnClear)
         progressBar = findViewById(R.id.progressBar)
         tvLoginState = findViewById(R.id.tvLoginState)
         tvStatus = findViewById(R.id.tvStatus)
@@ -88,6 +90,10 @@ class MainActivity : AppCompatActivity() {
                 isDownloading -> toast("已有下载任务正在进行")
                 else -> startDownload(input)
             }
+        }
+
+        btnClear.setOnClickListener {
+            clearLinkAndCancelDownload()
         }
     }
 
@@ -164,6 +170,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun clearLinkAndCancelDownload() {
+        etUrl.text?.clear()
+        tvStatus.text = "已清空链接"
+    }
+
     private fun requestStoragePermissionIfNeeded() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) return
 
@@ -200,6 +211,7 @@ class MainActivity : AppCompatActivity() {
         etUrl.isEnabled = enabled
         btnLogin.isEnabled = enabled
         btnDownload.isEnabled = enabled
+        btnClear.isEnabled = true
     }
 
     private fun showError(message: String) {
