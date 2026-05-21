@@ -118,6 +118,10 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
                         if (registeredUris.isNotEmpty()) {
                             append("\n已登记到系统媒体库: ${registeredUris.size} 个文件")
                         }
+                        formatTimings(result.timings)?.let {
+                            append("\n耗时: ")
+                            append(it)
+                        }
                         if (result.files.isNotEmpty()) {
                             append("\n新增文件:\n")
                             append(result.files.joinToString("\n") { File(it).name })
@@ -217,6 +221,26 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         binding.tvInfo.visibility = View.VISIBLE
         binding.tvInfo.text = message
         toast(message)
+    }
+
+    private fun formatTimings(timings: Map<String, Int>): String? {
+        if (timings.isEmpty()) return null
+        val resolveMs = timings["resolve_ms"]
+        val downloadMs = timings["download_ms"]
+        val collectMs = timings["collect_files_ms"]
+        return listOfNotNull(
+            resolveMs?.let { "解析 ${formatDuration(it)}" },
+            downloadMs?.let { "下载 ${formatDuration(it)}" },
+            collectMs?.let { "收尾 ${formatDuration(it)}" }
+        ).joinToString(" / ").takeIf { it.isNotBlank() }
+    }
+
+    private fun formatDuration(ms: Int): String {
+        return if (ms >= 1000) {
+            "%.1fs".format(ms / 1000.0)
+        } else {
+            "${ms}ms"
+        }
     }
 
     private fun toast(message: String) {

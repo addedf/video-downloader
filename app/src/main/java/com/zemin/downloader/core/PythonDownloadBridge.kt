@@ -11,18 +11,21 @@ import java.io.File
 
 class PythonDownloadBridge(private val context: Context) {
 
+    suspend fun warmUp() = withContext(Dispatchers.IO) {
+        val appDataDir = File(context.filesDir, "python-runtime").apply { mkdirs() }
+        val py = getPython()
+        py.getModule("android_entry")
+            .callAttr("warm_up", appDataDir.absolutePath)
+    }
+
     suspend fun download(
         inputText: String,
         cookieHeader: String,
         outputDir: File
     ): PythonDownloadResult = withContext(Dispatchers.IO) {
-        if (!Python.isStarted()) {
-            Python.start(AndroidPlatform(context.applicationContext))
-        }
-
         outputDir.mkdirs()
         val appDataDir = File(context.filesDir, "python-runtime").apply { mkdirs() }
-        val py = Python.getInstance()
+        val py = getPython()
         val raw = py.getModule("android_entry")
             .callAttr(
                 "download",
@@ -35,6 +38,13 @@ class PythonDownloadBridge(private val context: Context) {
 
         PythonDownloadResult.fromJson(raw)
     }
+
+    private fun getPython(): Python {
+        if (!Python.isStarted()) {
+            Python.start(AndroidPlatform(context.applicationContext))
+        }
+        return Python.getInstance()
+    }
 }
 
 data class PythonDownloadResult(
@@ -46,7 +56,8 @@ data class PythonDownloadResult(
     val total: Int,
     val success: Int,
     val failed: Int,
-    val skipped: Int
+    val skipped: Int,
+    val timings: Map<String, Int>
 ) {
     companion object {
         fun fromJson(raw: String): PythonDownloadResult {
@@ -56,6 +67,16 @@ data class PythonDownloadResult(
                 for (index in 0 until filesJson.length()) {
                     val value = filesJson.optString(index)
                     if (value.isNotBlank()) add(value)
+                }
+            }
+            val timingsJson = json.optJSONObject("timings")
+            val timings = linkedMapOf<String, Int>().apply {
+                if (timingsJson != null) {
+                    val keys = timingsJson.keys()
+                    while (keys.hasNext()) {
+                        val key = keys.next()
+                        put(key, timingsJson.optInt(key))
+                    }
                 }
             }
             val error = json.optString("error").takeIf { it.isNotBlank() }
@@ -68,7 +89,8 @@ data class PythonDownloadResult(
                 total = json.optInt("total", 0),
                 success = json.optInt("success", 0),
                 failed = json.optInt("failed", 0),
-                skipped = json.optInt("skipped", 0)
+                skipped = json.optInt("skipped", 0),
+                timings = timings
             )
         }
     }
