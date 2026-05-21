@@ -11,7 +11,6 @@ import kotlinx.coroutines.flow.flow
 
 class DownloadVideoUseCase(
     private val apiClient: DouyinApiClient,
-    private val downloadEngine: DownloadEngine,
     private val storageManager: StorageManager
 ) {
     /**
@@ -32,12 +31,14 @@ class DownloadVideoUseCase(
         val fileName = "douyin_${video.awemeId}_${System.currentTimeMillis()}.mp4"
         val outputFile = storageManager.getVideoOutputFile(fileName)
 
-        // 4. 下载视频（需要携带 Referer 等头部）
-        val headers = mapOf(
-            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ...",
-            "Referer" to "https://www.douyin.com/"
+        // 4. 下载视频（复用 API 客户端的签名、Cookie 和下载头）
+        val downloadRequest = apiClient.buildVideoDownloadRequest(json)
+            ?: throw Exception("Failed to build video download request")
+        val downloadFlow = DownloadEngine(apiClient.downloadClient()).downloadFile(
+            downloadRequest.url,
+            outputFile,
+            downloadRequest.headers
         )
-        val downloadFlow = downloadEngine.downloadFile(video.videoUrl, outputFile, headers)
         downloadFlow.collect { progress ->
             if (progress is DownloadProgress.Success) {
                 // 5. 注册到媒体库

@@ -9,3 +9,8 @@ data class DouyinVideo(
     val coverUrl: String,
     val duration: Long
 )
+
+data class VideoDownloadRequest(
+    val url: String,
+    val headers: Map<String, String>
+)

@@ -9,7 +9,7 @@ object VideoParser {
             val root = JSONObject(jsonString)
             val awemeDetail = root.optJSONObject("aweme_detail") ?: return null
             val video = awemeDetail.optJSONObject("video") ?: return null
-            val bestUrl = findBestVideoUrl(video) ?: return null
+            val bestUrl = findBestVideoUrl(video).orEmpty()
 
             val author = awemeDetail.optJSONObject("author")
             DouyinVideo(

@@ -29,7 +29,6 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch { it.preload() }
     }
     private val cookieStorage = CookieStorage(application)
-    private val okHttpClient = OkHttpClient()
     private val storageManager = StorageManager(application)
 
     // 登录状态
@@ -86,7 +85,6 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
 
             _downloadState.value = DownloadUiState.Downloading
             val apiClient = DouyinApiClient(cookiesMap, signatureProvider)
-            val downloadEngine = DownloadEngine(okHttpClient)
 
             try {
                 // 1. 获取视频详情
@@ -108,11 +106,16 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
                 val outputFile = storageManager.getVideoOutputFile(fileName)
 
                 // 4. 下载视频
-                val headers = mapOf(
-                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
-                    "Referer" to "https://www.douyin.com/"
-                )
-                downloadEngine.downloadFile(video.videoUrl, outputFile, headers).collect { progress ->
+                val downloadRequest = apiClient.buildVideoDownloadRequest(json)
+                if (downloadRequest == null) {
+                    _downloadState.value = DownloadUiState.Error("构造视频下载地址失败")
+                    return@launch
+                }
+                DownloadEngine(apiClient.downloadClient()).downloadFile(
+                    downloadRequest.url,
+                    outputFile,
+                    downloadRequest.headers
+                ).collect { progress ->
                     _progressEvents.emit(progress)
                     when (progress) {
                         is DownloadProgress.Success -> {

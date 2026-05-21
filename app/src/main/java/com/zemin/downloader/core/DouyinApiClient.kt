@@ -11,10 +11,12 @@ import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
 import java.net.URLDecoder
+import java.net.URLEncoder
 import java.security.SecureRandom
 import java.util.concurrent.ConcurrentHashMap
 
@@ -89,17 +91,25 @@ class DouyinApiClient(
         .addNetworkInterceptor(HttpLoggingInterceptor())
         .build()
 
+    fun downloadClient(): OkHttpClient = client
+
     suspend fun requestAwemeDetail(awemeId: String): String? = withContext(Dispatchers.IO) {
         try {
             Log.d(TAG, "requestAwemeDetail: awemeId = $awemeId")
             warmUpCookiesIfNeeded()
 
-            DETAIL_AIDS.forEach { aid ->
-                EMPTY_BODY_RETRY_DELAYS_MS.forEachIndexed { attemptIndex, retryDelayMs ->
+            for (aid in DETAIL_AIDS) {
+                for ((attemptIndex, retryDelayMs) in EMPTY_BODY_RETRY_DELAYS_MS.withIndex()) {
                     val result = requestAwemeDetailOnce(awemeId, aid, attemptIndex + 1)
                     when (result) {
                         is DetailResult.Success -> return@withContext result.body
-                        is DetailResult.NonRetryableFailure -> return@withContext null
+                        is DetailResult.NonRetryableFailure -> {
+                            Log.w(
+                                TAG,
+                                "requestAwemeDetail non-retryable failure: aid=$aid, attempt=${attemptIndex + 1}; trying next aid or fallback"
+                            )
+                            break
+                        }
                         is DetailResult.EmptyBody -> {
                             Log.w(
                                 TAG,
@@ -165,11 +175,7 @@ class DouyinApiClient(
         aid: String,
         attempt: Int
     ): DetailResult {
-        val unsignedUrl = buildAwemeDetailUrl(awemeId, aid)
-        val xBogus = signatureProvider.generateXBogus(unsignedUrl.toString(), userAgent)
-        val signedUrl = unsignedUrl.newBuilder()
-            .addQueryParameter("X-Bogus", xBogus)
-            .build()
+        val signedUrl = signDouyinUrl(buildAwemeDetailUrl(awemeId, aid).toString()).url
 
         val request = Request.Builder()
             .url(signedUrl)
@@ -254,6 +260,170 @@ class DouyinApiClient(
             .addQueryParameter("uifid", "")
             .addQueryParameter("msToken", msToken)
             .build()
+    }
+
+    suspend fun buildVideoDownloadRequest(detailJson: String): VideoDownloadRequest? {
+        val root = runCatching { JSONObject(detailJson) }.getOrNull() ?: return null
+        val awemeDetail = root.optJSONObject("aweme_detail") ?: return null
+        val video = awemeDetail.optJSONObject("video") ?: return null
+        return buildVideoDownloadRequest(video)
+    }
+
+    private suspend fun buildVideoDownloadRequest(video: JSONObject): VideoDownloadRequest? {
+        val playAddr = pickHighestQualityPlayAddr(video)
+            ?: video.optJSONObject("play_addr")
+            ?: video.optJSONObject("download_addr")
+        val urlCandidates = extractUrls(playAddr)
+            .map { normalizeVideoUrl(it) }
+            .sortedBy { if (it.contains("watermark=0")) 0 else 1 }
+
+        var cdnCandidate: VideoDownloadRequest? = null
+        var webPlayCandidate: VideoDownloadRequest? = null
+        var watermarkedCandidate: VideoDownloadRequest? = null
+
+        for (candidate in urlCandidates) {
+            val request = buildCandidateDownloadRequest(candidate)
+            if (isWatermarkedMediaUrl(candidate)) {
+                if (watermarkedCandidate == null) watermarkedCandidate = request
+            } else if (isDouyinWebUrl(candidate)) {
+                if (webPlayCandidate == null) webPlayCandidate = request
+            } else if (cdnCandidate == null) {
+                cdnCandidate = request
+            }
+        }
+
+        // Direct CDN URLs are usually more reliable than /aweme/v1/play/ redirects.
+        cdnCandidate?.let { return it }
+        webPlayCandidate?.let { return it }
+
+        val uri = playAddr?.optString("uri").orEmpty()
+            .ifBlank { video.optString("vid") }
+            .ifBlank { video.optJSONObject("download_addr")?.optString("uri").orEmpty() }
+        if (uri.isNotBlank()) {
+            val signed = buildSignedPath(
+                "/aweme/v1/play/",
+                linkedMapOf(
+                    "video_id" to uri,
+                    "ratio" to "1080p",
+                    "line" to "0",
+                    "is_play_url" to "1",
+                    "watermark" to "0",
+                    "source" to "PackSourceEnum_PUBLISH"
+                )
+            )
+            return VideoDownloadRequest(signed.url, downloadHeaders(signed.userAgent))
+        }
+
+        return watermarkedCandidate
+    }
+
+    private suspend fun buildCandidateDownloadRequest(url: String): VideoDownloadRequest {
+        if (!isDouyinWebUrl(url) || url.contains("X-Bogus=")) {
+            return VideoDownloadRequest(url, downloadHeaders())
+        }
+
+        val signed = signDouyinUrl(url)
+        return VideoDownloadRequest(signed.url, downloadHeaders(signed.userAgent))
+    }
+
+    private suspend fun buildSignedPath(
+        path: String,
+        params: Map<String, String>
+    ): SignedUrl {
+        val builder = HttpUrl.Builder()
+            .scheme("https")
+            .host("www.douyin.com")
+            .encodedPath(path)
+        params.forEach { (key, value) -> builder.addQueryParameter(key, value) }
+        return signDouyinUrl(builder.build().toString())
+    }
+
+    private suspend fun signDouyinUrl(rawUrl: String): SignedUrl {
+        val unsignedUrl = rawUrl.toHttpUrlOrNull()
+            ?.newBuilder()
+            ?.removeAllQueryParameters("X-Bogus")
+            ?.build()
+            ?.toString()
+            ?: rawUrl
+        val xBogus = signatureProvider.generateXBogus(unsignedUrl, userAgent)
+        val signedUrl = unsignedUrl.toHttpUrlOrNull()
+            ?.newBuilder()
+            ?.addQueryParameter("X-Bogus", xBogus)
+            ?.build()
+            ?.toString()
+            ?: appendQueryParameter(unsignedUrl, "X-Bogus", xBogus)
+        return SignedUrl(signedUrl, userAgent)
+    }
+
+    private fun downloadHeaders(userAgent: String = this.userAgent): Map<String, String> {
+        return mapOf(
+            "User-Agent" to userAgent,
+            "Referer" to "$BASE_URL/",
+            "Origin" to BASE_URL,
+            "Accept" to "*/*",
+            "Accept-Language" to "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7"
+        )
+    }
+
+    private fun pickHighestQualityPlayAddr(video: JSONObject): JSONObject? {
+        val bitRates = video.optJSONArray("bit_rate") ?: return null
+        var best: JSONObject? = null
+        var bestScore = -1L
+
+        for (index in 0 until bitRates.length()) {
+            val item = bitRates.optJSONObject(index) ?: continue
+            val playAddr = item.optJSONObject("play_addr") ?: continue
+            val bitRate = item.optLong("bit_rate", 0L)
+            val width = playAddr.optLong("width", item.optLong("width", 0L))
+            val score = bitRate * 10_000L + width
+            if (score > bestScore) {
+                bestScore = score
+                best = playAddr
+            }
+        }
+
+        return best
+    }
+
+    private fun extractUrls(source: JSONObject?): List<String> {
+        if (source == null) return emptyList()
+        val urlList = source.optJSONArray("url_list") ?: source.optJSONArray("urlList")
+        if (urlList != null) {
+            val urls = mutableListOf<String>()
+            for (index in 0 until urlList.length()) {
+                urlList.optString(index).takeIf { it.isNotBlank() }?.let { urls.add(it) }
+            }
+            if (urls.isNotEmpty()) return urls
+        }
+
+        return listOf(
+            source.optString("url"),
+            source.optString("src"),
+            source.optString("mainUrl"),
+            source.optString("backupUrl")
+        ).filter { it.isNotBlank() }
+    }
+
+    private fun isDouyinWebUrl(url: String): Boolean {
+        val host = url.toHttpUrlOrNull()?.host.orEmpty()
+        return host == "www.douyin.com" || host.endsWith(".douyin.com")
+    }
+
+    private fun isWatermarkedMediaUrl(url: String): Boolean {
+        val normalized = url.lowercase()
+        return listOf(
+            "tplv-dy-water",
+            "dy-water",
+            "owner_watermark",
+            "watermark_image",
+            "watermark=1",
+            "playwm"
+        ).any { normalized.contains(it) }
+    }
+
+    private fun appendQueryParameter(url: String, name: String, value: String): String {
+        val separator = if (url.contains("?")) "&" else "?"
+        return "$url$separator$name=${URLEncoder.encode(value, "UTF-8")}"
     }
 
     private fun extractAwemeDetailFromHtml(html: String, awemeId: String): JSONObject? {
@@ -939,4 +1109,9 @@ class DouyinApiClient(
         object EmptyBody : DetailResult()
         object NonRetryableFailure : DetailResult()
     }
+
+    private data class SignedUrl(
+        val url: String,
+        val userAgent: String
+    )
 }

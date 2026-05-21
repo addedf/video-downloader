@@ -28,7 +28,6 @@ import com.zemin.downloader.parse.ResolveResult
 import com.zemin.downloader.parse.UrlResolver
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import okhttp3.OkHttpClient
 
 class MainActivity : AppCompatActivity() {
 
@@ -43,7 +42,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var cookieStorage: CookieStorage
     private lateinit var signatureProvider: SignatureProvider
     private lateinit var storageManager: StorageManager
-    private val okHttpClient = OkHttpClient()
     private var isDownloading = false
 
     private val loginLauncher = registerForActivityResult(
@@ -156,16 +154,20 @@ class MainActivity : AppCompatActivity() {
                     "douyin_${safeAwemeId}_${System.currentTimeMillis()}.mp4"
                 )
 
-                val headers = mapOf(
-                    "User-Agent" to DouyinApiClient.DEFAULT_USER_AGENT,
-                    "Referer" to "https://www.douyin.com/",
-                    "Accept" to "*/*"
-                )
+                val downloadRequest = apiClient.buildVideoDownloadRequest(json)
+                if (downloadRequest == null) {
+                    showError("构造视频下载地址失败，可能是 Cookie、签名或作品权限问题")
+                    return@launch
+                }
 
                 tvStatus.text = "正在下载..."
                 tvInfo.text = "视频：${video.desc.ifBlank { "无标题" }}\n作者：${video.authorName}"
 
-                DownloadEngine(okHttpClient).downloadFile(video.videoUrl, outputFile, headers)
+                DownloadEngine(apiClient.downloadClient()).downloadFile(
+                    downloadRequest.url,
+                    outputFile,
+                    downloadRequest.headers
+                )
                     .collect { progress ->
                         when (progress) {
                             is DownloadProgress.Progress -> updateProgress(progress)
