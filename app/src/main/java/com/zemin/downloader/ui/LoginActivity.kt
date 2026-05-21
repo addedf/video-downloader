@@ -8,13 +8,11 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.Button
-import android.widget.TextView
 import android.widget.Toast
-import com.zemin.downloader.R
 import com.zemin.downloader.core.CookieStorage
+import com.zemin.downloader.databinding.ActivityLoginBinding
 
-class LoginActivity : BaseActivity() {
+class LoginActivity : BaseActivity<ActivityLoginBinding>(ActivityLoginBinding::inflate) {
 
     private companion object {
         private const val DEFAULT_USER_AGENT =
@@ -31,10 +29,7 @@ class LoginActivity : BaseActivity() {
         )
     }
 
-    private lateinit var webView: WebView
     private lateinit var cookieStorage: CookieStorage
-    private lateinit var statusText: TextView
-    private lateinit var actionButton: Button
     private var loginDone = false
     private var loadedIesDouyin = false
 
@@ -45,10 +40,7 @@ class LoginActivity : BaseActivity() {
 
         CookieManager.getInstance().setAcceptCookie(true)
 
-        setContentView(R.layout.activity_login)
-        applySystemBarInsets(R.id.root)
-
-        webView = findViewById<WebView>(R.id.webView).apply {
+        binding.webView.apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.builtInZoomControls = true
@@ -81,22 +73,21 @@ class LoginActivity : BaseActivity() {
             }
         }
 
-        statusText = findViewById(R.id.tvLoginStatus)
-        actionButton = findViewById<Button>(R.id.btnLoginAction).apply {
+        binding.btnLoginAction.apply {
             setOnClickListener {
                 finishLogin()
             }
         }
 
-        webView.loadUrl(LOGIN_URL)
+        binding.webView.loadUrl(LOGIN_URL)
     }
 
     private fun checkLoginStatus(view: WebView? = null) {
         val cookieString = collectCookies()
         if (cookieString.isNotBlank() && isLoggedIn(cookieString)) {
             loginDone = true
-            statusText.text = "已登录，Cookie 已保存"
-            actionButton.text = "完成"
+            binding.tvLoginStatus.text = "已登录，Cookie 已保存"
+            binding.btnLoginAction.text = "完成"
             cookieStorage.saveCookies(cookieString)
             CookieManager.getInstance().flush()
             if (!loadedIesDouyin) {

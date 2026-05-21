@@ -10,11 +10,12 @@
         android:id="@+id/tvLoginTitle"
         android:layout_width="match_parent"
         android:layout_height="56dp"
+        android:background="@color/dy_primary"
         android:gravity="center_vertical"
         android:paddingStart="16dp"
         android:paddingEnd="16dp"
         android:text="登录抖音"
-        android:textColor="#202020"
+        android:textColor="@color/white"
         android:textSize="20sp" />
 
     <WebView
@@ -47,6 +48,8 @@
             android:id="@+id/btnLoginAction"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:backgroundTint="@color/dy_primary"
+            android:textColor="@color/white"
             android:text="取消" />
     </LinearLayout>
 </LinearLayout>

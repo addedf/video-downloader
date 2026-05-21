@@ -15,6 +15,7 @@
             android:id="@+id/tvLoginState"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:textColor="@color/dy_primary_light"
             android:text="未登录"
             android:textSize="14sp" />
 
@@ -23,12 +24,15 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
+            android:backgroundTint="@color/dy_primary"
+            android:textColor="@color/white"
             android:text="登录抖音" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
+            android:textColor="@color/dy_primary_light"
             android:text="抖音分享文本或链接"
             android:textSize="16sp" />
 
@@ -52,6 +56,8 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
+                android:backgroundTint="@color/dy_cyan"
+                android:textColor="@color/black"
                 android:text="清除链接" />
 
             <Button
@@ -60,6 +66,8 @@
                 android:layout_height="wrap_content"
                 android:layout_marginStart="8dp"
                 android:layout_weight="1"
+                android:backgroundTint="@color/dy_primary"
+                android:textColor="@color/white"
                 android:text="解析并下载" />
 
         </LinearLayout>
@@ -78,6 +86,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
+            android:textColor="@color/dy_primary_light"
             android:text="等待输入"
             android:textSize="14sp" />
 

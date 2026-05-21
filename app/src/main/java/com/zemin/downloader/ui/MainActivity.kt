@@ -6,33 +6,20 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.view.View
-import android.widget.Button
-import android.widget.EditText
-import android.widget.ProgressBar
-import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
-import com.zemin.downloader.R
 import com.zemin.downloader.core.CookieStorage
 import com.zemin.downloader.core.PythonDownloadBridge
 import com.zemin.downloader.core.StorageManager
+import com.zemin.downloader.databinding.ActivityMainBinding
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
 
-class MainActivity : BaseActivity() {
-
-    private lateinit var etUrl: EditText
-    private lateinit var btnLogin: Button
-    private lateinit var btnDownload: Button
-    private lateinit var btnClear: Button
-    private lateinit var progressBar: ProgressBar
-    private lateinit var tvLoginState: TextView
-    private lateinit var tvStatus: TextView
-    private lateinit var tvInfo: TextView
+class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::inflate) {
 
     private lateinit var cookieStorage: CookieStorage
     private lateinit var storageManager: StorageManager
@@ -51,18 +38,6 @@ class MainActivity : BaseActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
-
-        applySystemBarInsets(R.id.root)
-
-        etUrl = findViewById(R.id.etUrl)
-        btnLogin = findViewById(R.id.btnLogin)
-        btnDownload = findViewById(R.id.btnDownload)
-        btnClear = findViewById(R.id.btnClear)
-        progressBar = findViewById(R.id.progressBar)
-        tvLoginState = findViewById(R.id.tvLoginState)
-        tvStatus = findViewById(R.id.tvStatus)
-        tvInfo = findViewById(R.id.tvInfo)
 
         cookieStorage = CookieStorage(this)
         storageManager = StorageManager(this)
@@ -72,12 +47,12 @@ class MainActivity : BaseActivity() {
         refreshLoginState()
         readSharedText(intent)
 
-        btnLogin.setOnClickListener {
+        binding.btnLogin.setOnClickListener {
             loginLauncher.launch(Intent(this, LoginActivity::class.java))
         }
 
-        btnDownload.setOnClickListener {
-            val input = etUrl.text.toString().trim()
+        binding.btnDownload.setOnClickListener {
+            val input = binding.etUrl.text.toString().trim()
             when {
                 input.isEmpty() -> toast("请先粘贴抖音分享文本或链接")
                 isDownloading -> toast("已有下载任务正在进行")
@@ -85,7 +60,7 @@ class MainActivity : BaseActivity() {
             }
         }
 
-        btnClear.setOnClickListener {
+        binding.btnClear.setOnClickListener {
             clearLinkAndCancelDownload()
         }
     }
@@ -111,10 +86,10 @@ class MainActivity : BaseActivity() {
 
         isDownloading = true
         setUiEnabled(false)
-        progressBar.visibility = View.VISIBLE
-        progressBar.isIndeterminate = true
-        tvStatus.text = "Python 核心正在解析和下载..."
-        tvInfo.text = "输出目录: ${storageManager.getPythonDownloadDir().absolutePath}"
+        binding.progressBar.visibility = View.VISIBLE
+        binding.progressBar.isIndeterminate = true
+        binding.tvStatus.text = "Python 核心正在解析和下载..."
+        binding.tvInfo.text = "输出目录: ${storageManager.getPythonDownloadDir().absolutePath}"
 
         lifecycleScope.launch {
             try {
@@ -124,16 +99,16 @@ class MainActivity : BaseActivity() {
                     outputDir = storageManager.getPythonDownloadDir()
                 )
 
-                progressBar.isIndeterminate = false
-                progressBar.progress = 100
+                binding.progressBar.isIndeterminate = false
+                binding.progressBar.progress = 100
 
                 val registeredUris = result.files
                     .map(::File)
                     .mapNotNull { storageManager.registerMediaFile(it) }
 
                 if (result.ok || result.skipped > 0) {
-                    tvStatus.text = "下载完成"
-                    tvInfo.text = buildString {
+                    binding.tvStatus.text = "下载完成"
+                    binding.tvInfo.text = buildString {
                         append(result.message)
                         append("\n成功: ${result.success} ,失败: ${result.failed} ,跳过: ${result.skipped}")
                         append("\nPython 输出: ${result.outputDir}")
@@ -156,16 +131,16 @@ class MainActivity : BaseActivity() {
                 setUiEnabled(true)
                 lifecycleScope.launch {
                     delay(1500)
-                    progressBar.visibility = View.GONE
-                    progressBar.isIndeterminate = false
+                    binding.progressBar.visibility = View.GONE
+                    binding.progressBar.isIndeterminate = false
                 }
             }
         }
     }
 
     private fun clearLinkAndCancelDownload() {
-        etUrl.text?.clear()
-        tvStatus.text = "已清空链接"
+        binding.etUrl.text?.clear()
+        binding.tvStatus.text = "已清空链接"
     }
 
     private fun requestStoragePermissionIfNeeded() {
@@ -189,27 +164,27 @@ class MainActivity : BaseActivity() {
 
         val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty()
         if (sharedText.isNotBlank()) {
-            etUrl.setText(sharedText)
-            tvStatus.text = "已接收分享文本"
+            binding.etUrl.setText(sharedText)
+            binding.tvStatus.text = "已接收分享文本"
         }
     }
 
     private fun refreshLoginState() {
         val loggedIn = cookieStorage.getCookieString().isNullOrBlank().not()
-        tvLoginState.text = if (loggedIn) "已登录" else "未登录"
-        btnLogin.text = if (loggedIn) "重新登录抖音" else "登录抖音"
+        binding.tvLoginState.text = if (loggedIn) "已登录" else "未登录"
+        binding.btnLogin.text = if (loggedIn) "重新登录抖音" else "登录抖音"
     }
 
     private fun setUiEnabled(enabled: Boolean) {
-        etUrl.isEnabled = enabled
-        btnLogin.isEnabled = enabled
-        btnDownload.isEnabled = enabled
-        btnClear.isEnabled = true
+        binding.etUrl.isEnabled = enabled
+        binding.btnLogin.isEnabled = enabled
+        binding.btnDownload.isEnabled = enabled
+        binding.btnClear.isEnabled = true
     }
 
     private fun showError(message: String) {
-        tvStatus.text = "出错了"
-        tvInfo.text = message
+        binding.tvStatus.text = "出错了"
+        binding.tvInfo.text = message
         toast(message)
     }
 
