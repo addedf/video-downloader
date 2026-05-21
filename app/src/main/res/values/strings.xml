@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">抖音下载器</string>
+    <string name="share_target_name">保存到抖音下载器</string>
 </resources>

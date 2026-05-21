@@ -22,21 +22,53 @@
 
         <activity
             android:name=".ui.MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
             <intent-filter>
-                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="text/plain" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:host="v.douyin.com"
+                    android:scheme="https" />
+                <data
+                    android:host="www.douyin.com"
+                    android:scheme="https" />
+                <data
+                    android:host="douyin.com"
+                    android:scheme="https" />
+                <data
+                    android:host="www.iesdouyin.com"
+                    android:scheme="https" />
             </intent-filter>
         </activity>
 
         <activity
             android:name=".ui.LoginActivity"
             android:exported="false" />
+
+        <activity-alias
+            android:name=".ui.ShareTargetActivity"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/share_target_name"
+            android:roundIcon="@mipmap/ic_launcher_round"
+            android:targetActivity=".ui.MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/*" />
+            </intent-filter>
+        </activity-alias>
 
     </application>
 

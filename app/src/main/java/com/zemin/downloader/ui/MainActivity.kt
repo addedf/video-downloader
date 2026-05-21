@@ -34,6 +34,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
 
     companion object {
         private const val REQUEST_STORAGE_PERM = 1
+        private val URL_PATTERN = Regex("https?://\\S+")
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -160,13 +161,38 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
     }
 
     private fun readSharedText(intent: Intent?) {
-        if (intent?.action != Intent.ACTION_SEND || intent.type != "text/plain") return
-
-        val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty()
+        val sharedText = extractSharedText(intent)
         if (sharedText.isNotBlank()) {
             binding.etUrl.setText(sharedText)
-            binding.tvStatus.text = "已接收分享文本"
+            binding.etUrl.setSelection(binding.etUrl.text?.length ?: 0)
+            binding.tvStatus.text = "已接收分享链接"
         }
+    }
+
+    private fun extractSharedText(intent: Intent?): String {
+        if (intent == null) return ""
+        return when (intent.action) {
+            Intent.ACTION_SEND -> {
+                val rawText = intent.getStringExtra(Intent.EXTRA_TEXT)
+                    ?: intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
+                    ?: intent.getStringExtra(Intent.EXTRA_SUBJECT)
+                    ?: ""
+                normalizeSharedText(rawText)
+            }
+
+            Intent.ACTION_VIEW -> {
+                normalizeSharedText(intent.dataString.orEmpty())
+            }
+
+            else -> ""
+        }
+    }
+
+    private fun normalizeSharedText(text: String): String {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return ""
+        val url = URL_PATTERN.find(trimmed)?.value?.trimEnd('.', ',', ';', '，', '。', '；', ')')
+        return url ?: trimmed
     }
 
     private fun refreshLoginState() {
