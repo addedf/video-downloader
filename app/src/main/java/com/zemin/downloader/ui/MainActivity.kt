@@ -12,11 +12,8 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import com.zemin.downloader.R
 import com.zemin.downloader.core.CookieStorage
@@ -26,7 +23,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : BaseActivity() {
 
     private lateinit var etUrl: EditText
     private lateinit var btnLogin: Button
@@ -56,11 +53,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.root)) { view, insets ->
-            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            view.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
-            insets
-        }
+        applySystemBarInsets(R.id.root)
 
         etUrl = findViewById(R.id.etUrl)
         btnLogin = findViewById(R.id.btnLogin)
@@ -142,7 +135,7 @@ class MainActivity : AppCompatActivity() {
                     tvStatus.text = "下载完成"
                     tvInfo.text = buildString {
                         append(result.message)
-                        append("\n成功: ${result.success} 失败: ${result.failed} 跳过: ${result.skipped}")
+                        append("\n成功: ${result.success} ,失败: ${result.failed} ,跳过: ${result.skipped}")
                         append("\nPython 输出: ${result.outputDir}")
                         if (registeredUris.isNotEmpty()) {
                             append("\n已登记到系统媒体库: ${registeredUris.size} 个文件")

@@ -2,25 +2,19 @@ package com.zemin.downloader.ui
 
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.Color
 import android.os.Bundle
-import android.view.Gravity
-import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
-import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
+import com.zemin.downloader.R
 import com.zemin.downloader.core.CookieStorage
 
-class LoginActivity : AppCompatActivity() {
+class LoginActivity : BaseActivity() {
 
     private companion object {
         private const val DEFAULT_USER_AGENT =
@@ -51,33 +45,10 @@ class LoginActivity : AppCompatActivity() {
 
         CookieManager.getInstance().setAcceptCookie(true)
 
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.WHITE)
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-        }
+        setContentView(R.layout.activity_login)
+        applySystemBarInsets(R.id.root)
 
-        val titleBar = TextView(this).apply {
-            text = "登录抖音"
-            textSize = 20f
-            setTextColor(Color.rgb(32, 32, 32))
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(16), 0, dp(16), 0)
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(56)
-            )
-        }
-
-        webView = WebView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                0,
-                1f
-            )
+        webView = findViewById<WebView>(R.id.webView).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.builtInZoomControls = true
@@ -110,48 +81,12 @@ class LoginActivity : AppCompatActivity() {
             }
         }
 
-        val bottomBar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), dp(10), dp(12), dp(10))
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        }
-
-        statusText = TextView(this).apply {
-            text = "输入手机号和验证码完成登录"
-            textSize = 14f
-            setTextColor(Color.rgb(96, 96, 96))
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-        }
-
-        actionButton = Button(this).apply {
-            text = "取消"
+        statusText = findViewById(R.id.tvLoginStatus)
+        actionButton = findViewById<Button>(R.id.btnLoginAction).apply {
             setOnClickListener {
-                if (loginDone) {
-                    CookieManager.getInstance().flush()
-                    saveCookiesFromWebView()
-                    setResult(RESULT_OK, Intent())
-                    Toast.makeText(this@LoginActivity, "登录成功，Cookie 已保存", Toast.LENGTH_SHORT).show()
-                }
-                finish()
+                finishLogin()
             }
         }
-
-        bottomBar.addView(statusText)
-        bottomBar.addView(actionButton)
-        root.addView(titleBar)
-        root.addView(webView)
-        root.addView(bottomBar)
-        ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
-            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            view.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
-            insets
-        }
-        setContentView(root)
-        ViewCompat.requestApplyInsets(root)
 
         webView.loadUrl(LOGIN_URL)
     }
@@ -183,15 +118,21 @@ class LoginActivity : AppCompatActivity() {
         }
     }
 
+    private fun finishLogin() {
+        if (loginDone) {
+            CookieManager.getInstance().flush()
+            saveCookiesFromWebView()
+            setResult(RESULT_OK, Intent())
+            Toast.makeText(this, "登录成功，Cookie 已保存", Toast.LENGTH_SHORT).show()
+        }
+        finish()
+    }
+
     private fun collectCookies(): String {
         return COOKIE_URLS
             .mapNotNull { CookieManager.getInstance().getCookie(it) }
             .filter { it.isNotBlank() }
             .distinct()
             .joinToString("; ")
-    }
-
-    private fun dp(value: Int): Int {
-        return (value * resources.displayMetrics.density).toInt()
     }
 }
