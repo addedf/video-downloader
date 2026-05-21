@@ -90,6 +90,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         binding.progressBar.visibility = View.VISIBLE
         binding.progressBar.isIndeterminate = true
         binding.tvStatus.text = "Python 核心正在解析和下载..."
+        binding.tvInfo.visibility = View.VISIBLE
         binding.tvInfo.text = "输出目录: ${storageManager.getPythonDownloadDir().absolutePath}"
 
         lifecycleScope.launch {
@@ -109,6 +110,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
 
                 if (result.ok || result.skipped > 0) {
                     binding.tvStatus.text = "下载完成"
+                    binding.tvInfo.visibility = View.VISIBLE
                     binding.tvInfo.text = buildString {
                         append(result.message)
                         append("\n成功: ${result.success} ,失败: ${result.failed} ,跳过: ${result.skipped}")
@@ -142,6 +144,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
     private fun clearLinkAndCancelDownload() {
         binding.etUrl.text?.clear()
         binding.tvStatus.text = "已清空链接"
+        binding.tvInfo.visibility = View.GONE
     }
 
     private fun requestStoragePermissionIfNeeded() {
@@ -166,6 +169,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
             binding.etUrl.setText(sharedText)
             binding.etUrl.setSelection(binding.etUrl.text?.length ?: 0)
             binding.tvStatus.text = "已接收分享链接"
+            binding.tvInfo.visibility = View.GONE
         }
     }
 
@@ -210,6 +214,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
 
     private fun showError(message: String) {
         binding.tvStatus.text = "出错了"
+        binding.tvInfo.visibility = View.VISIBLE
         binding.tvInfo.text = message
         toast(message)
     }
