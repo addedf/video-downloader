@@ -10,11 +10,14 @@ import okhttp3.HttpUrl
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.MediaType.Companion.toMediaType
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
+import java.net.HttpCookie
 import java.net.URLDecoder
 import java.net.URLEncoder
 import java.security.SecureRandom
@@ -37,6 +40,9 @@ class DouyinApiClient(
         private const val MS_TOKEN_SUFFIX = "=="
         private const val MS_TOKEN_ALPHABET =
             "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+        private const val F2_MS_TOKEN_CONF_URL =
+            "https://raw.githubusercontent.com/Johnserf-Seed/f2/main/f2/conf/conf.yaml"
+        private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 
         fun String?.preview(limit: Int = 800): String {
             if (this == null) return "null"
@@ -611,9 +617,48 @@ class DouyinApiClient(
         normalizedJsonCandidates(raw).forEach { candidate ->
             findAwemeDetail(candidate, awemeId)?.let { return it }
             extractJSONObjectNearAwemeId(candidate, awemeId)?.let { return it }
+            extractVideoUrlNearAwemeId(candidate, awemeId)?.let { videoUrl ->
+                Log.d(TAG, "web page fallback parser hit: nearby video url")
+                return buildMinimalAwemeDetail(awemeId, videoUrl)
+            }
             extractVideoUrlFromText(candidate)?.let { videoUrl ->
                 Log.d(TAG, "web page fallback parser hit: direct video url")
                 return buildMinimalAwemeDetail(awemeId, videoUrl)
+            }
+        }
+        return null
+    }
+
+    private fun extractVideoUrlNearAwemeId(text: String, awemeId: String): String? {
+        val index = text.indexOf(awemeId)
+        if (index < 0) return null
+
+        val start = (index - 20_000).coerceAtLeast(0)
+        val end = (index + 80_000).coerceAtMost(text.length)
+        val window = text.substring(start, end)
+        val candidates = linkedSetOf<String>()
+        candidates.add(window)
+        candidates.add(repeatedUrlDecode(window))
+        candidates.add(unescapeJsString(repeatedUrlDecode(window)))
+        candidates.add(htmlEntityDecode(unescapeJsString(repeatedUrlDecode(window))))
+
+        candidates.forEach { candidate ->
+            extractVideoUrlFromText(candidate)?.let { return it }
+            extractEncodedVideoUrl(candidate)?.let { return it }
+        }
+        return null
+    }
+
+    private fun extractEncodedVideoUrl(text: String): String? {
+        val patterns = listOf(
+            Regex("""https?%3A%2F%2F[^"'<>\\\s]+""", RegexOption.IGNORE_CASE),
+            Regex("""%2F%2F[^"'<>\\\s]+""", RegexOption.IGNORE_CASE)
+        )
+        patterns.forEach { pattern ->
+            pattern.findAll(text).forEach { match ->
+                val decoded = repeatedUrlDecode(unescapeJsString(match.value))
+                val normalized = normalizeVideoUrl(decoded)
+                if (isVideoCandidateUrl(normalized)) return normalized
             }
         }
         return null
@@ -1042,10 +1087,102 @@ class DouyinApiClient(
         val existing = cookieStore["msToken"]?.trim().orEmpty()
         if (existing.isNotBlank()) return existing
 
+        generateRealMsToken()?.let { token ->
+            cookieStore["msToken"] = token
+            Log.d(TAG, "ensureMsToken: generated real msToken length=${token.length}")
+            return token
+        }
+
         val fallback = generateFallbackMsToken()
         cookieStore["msToken"] = fallback
         Log.d(TAG, "ensureMsToken: generated fallback msToken length=${fallback.length}")
         return fallback
+    }
+
+    private fun generateRealMsToken(): String? {
+        val config = fetchMsTokenConfig() ?: return null
+        val payload = JSONObject()
+            .put("magic", config.magic)
+            .put("version", config.version)
+            .put("dataType", config.dataType)
+            .put("strData", config.strData)
+            .put("ulr", config.ulr)
+            .put("tspFromClient", System.currentTimeMillis())
+            .toString()
+
+        val request = Request.Builder()
+            .url(config.url)
+            .post(payload.toRequestBody(JSON_MEDIA_TYPE))
+            .header("User-Agent", userAgent)
+            .header("Content-Type", "application/json; charset=utf-8")
+            .build()
+
+        return runCatching {
+            client.newCall(request).execute().use { response ->
+                val token = response.headers("Set-Cookie")
+                    .asSequence()
+                    .mapNotNull { extractCookieValue(it, "msToken") }
+                    .firstOrNull { isValidMsToken(it) }
+                if (token == null) {
+                    Log.w(
+                        TAG,
+                        "generateRealMsToken failed: code=${response.code}, setCookieCount=${response.headers("Set-Cookie").size}"
+                    )
+                }
+                token
+            }
+        }.onFailure { error ->
+            Log.w(TAG, "generateRealMsToken exception: ${error.message}", error)
+        }.getOrNull()
+    }
+
+    private fun fetchMsTokenConfig(): MsTokenConfig? {
+        val request = Request.Builder()
+            .url(F2_MS_TOKEN_CONF_URL)
+            .get()
+            .header("User-Agent", userAgent)
+            .build()
+
+        return runCatching {
+            client.newCall(request).execute().use { response ->
+                val body = response.body?.string().orEmpty()
+                if (!response.isSuccessful || body.isBlank()) {
+                    Log.w("DouyinApiClient", "fetchMsTokenConfig failed: code=${response.code}, body=${body.preview()}")
+                    return@runCatching null
+                }
+                parseMsTokenConfig(body)
+            }
+        }.onFailure { error ->
+            Log.w(TAG, "fetchMsTokenConfig exception: ${error.message}", error)
+        }.getOrNull()
+    }
+
+    private fun parseMsTokenConfig(yaml: String): MsTokenConfig? {
+        val sectionStart = yaml.indexOf("msToken:")
+        val section = if (sectionStart >= 0) yaml.substring(sectionStart) else yaml
+        fun valueOf(key: String): String {
+            val pattern = Regex("""(?m)^\s*$key\s*:\s*(.+?)\s*$""")
+            return pattern.find(section)
+                ?.groupValues
+                ?.getOrNull(1)
+                ?.trim()
+                ?.trim('"', '\'')
+                .orEmpty()
+        }
+
+        val config = MsTokenConfig(
+            url = valueOf("url"),
+            magic = valueOf("magic"),
+            version = valueOf("version"),
+            dataType = valueOf("dataType"),
+            ulr = valueOf("ulr"),
+            strData = valueOf("strData")
+        )
+        if (!config.isComplete()) {
+            Log.w(TAG, "parseMsTokenConfig incomplete: url=${config.url.isNotBlank()}, magic=${config.magic.isNotBlank()}, strData=${config.strData.isNotBlank()}")
+            return null
+        }
+        return config
     }
 
     private fun generateFallbackMsToken(): String {
@@ -1055,6 +1192,17 @@ class DouyinApiClient(
             }
             append(MS_TOKEN_SUFFIX)
         }
+    }
+
+    private fun isValidMsToken(token: String?): Boolean {
+        val length = token?.trim()?.length ?: return false
+        return length == 164 || length == 184
+    }
+
+    private fun extractCookieValue(header: String, name: String): String? {
+        return runCatching {
+            HttpCookie.parse(header).firstOrNull { it.name == name }?.value
+        }.getOrNull()
     }
 
     private fun extractMsToken(html: String): String? {
@@ -1114,4 +1262,22 @@ class DouyinApiClient(
         val url: String,
         val userAgent: String
     )
+
+    private data class MsTokenConfig(
+        val url: String,
+        val magic: String,
+        val version: String,
+        val dataType: String,
+        val ulr: String,
+        val strData: String
+    ) {
+        fun isComplete(): Boolean {
+            return url.isNotBlank() &&
+                magic.isNotBlank() &&
+                version.isNotBlank() &&
+                dataType.isNotBlank() &&
+                ulr.isNotBlank() &&
+                strData.isNotBlank()
+        }
+    }
 }
