@@ -2,12 +2,16 @@ package com.zemin.downloader.ui
 
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.os.Bundle
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.FrameLayout
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import com.zemin.downloader.core.CookieStorage
 import com.zemin.downloader.core.DouyinApiClient
 
@@ -22,8 +26,16 @@ class LoginActivity : AppCompatActivity() {
 
         CookieManager.getInstance().setAcceptCookie(true)
 
-        webView = WebView(this).apply {
+        val root = FrameLayout(this).apply {
+            setBackgroundColor(Color.BLACK)
             layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        }
+
+        webView = WebView(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
@@ -43,7 +55,14 @@ class LoginActivity : AppCompatActivity() {
                 }
             }
         }
-        setContentView(webView)
+        root.addView(webView)
+        ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
+            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
+            insets
+        }
+        setContentView(root)
+        ViewCompat.requestApplyInsets(root)
 
         webView.loadUrl("https://www.douyin.com")
     }
