@@ -25,6 +25,10 @@ _FILE_MANAGER_PATCHED = False
 _ANDROID_DOWNLOAD_CHUNK_SIZE = 256 * 1024
 _ANDROID_THREAD_COUNT = 4
 _ANDROID_RATE_LIMIT = 3.0
+_ANDROID_RETRY_TIMES = 1
+_ANDROID_TOTAL_TIMEOUT_SECONDS = 90
+_ANDROID_CONNECT_TIMEOUT_SECONDS = 10
+_ANDROID_IDLE_READ_TIMEOUT_SECONDS = 25
 
 
 class AndroidProgressReporter:
@@ -195,7 +199,11 @@ def _patch_file_manager_for_android() -> None:
         try:
             async with session.get(
                 url,
-                timeout=aiohttp.ClientTimeout(total=240, sock_connect=20, sock_read=90),
+                timeout=aiohttp.ClientTimeout(
+                    total=_ANDROID_TOTAL_TIMEOUT_SECONDS,
+                    sock_connect=_ANDROID_CONNECT_TIMEOUT_SECONDS,
+                    sock_read=_ANDROID_IDLE_READ_TIMEOUT_SECONDS,
+                ),
                 headers=headers,
                 proxy=proxy or None,
             ) as response:
@@ -259,6 +267,7 @@ def _build_config(
         cookies=cookies,
         thread=_ANDROID_THREAD_COUNT,
         rate_limit=_ANDROID_RATE_LIMIT,
+        retry_times=_ANDROID_RETRY_TIMES,
         database=True,
         database_path=str(app_root / "dy_downloader.db"),
         music=False,

@@ -18,6 +18,7 @@ import com.zemin.downloader.databinding.ActivityMainBinding
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
+import kotlin.math.roundToInt
 
 class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::inflate) {
 
@@ -94,6 +95,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         binding.tvInfo.text = "输出目录: ${storageManager.getPythonDownloadDir().absolutePath}"
 
         lifecycleScope.launch {
+            val taskStartedAt = System.currentTimeMillis()
             try {
                 val result = pythonBridge.download(
                     inputText = shareText,
@@ -104,9 +106,12 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
                 binding.progressBar.isIndeterminate = false
                 binding.progressBar.progress = 100
 
+                val mediaRegisterStartedAt = System.currentTimeMillis()
                 val registeredUris = result.files
                     .map(::File)
                     .mapNotNull { storageManager.registerMediaFile(it) }
+                val mediaRegisterMs = (System.currentTimeMillis() - mediaRegisterStartedAt).toInt()
+                val taskTotalMs = (System.currentTimeMillis() - taskStartedAt).toInt()
 
                 if (result.ok || result.skipped > 0) {
                     binding.tvStatus.text = "下载完成"
@@ -121,6 +126,10 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
                         formatTimings(result.timings)?.let {
                             append("\n耗时: ")
                             append(it)
+                        }
+                        append("\nApp总耗时: ${formatDuration(taskTotalMs)}")
+                        if (mediaRegisterMs > 0) {
+                            append("，媒体库登记 ${formatDuration(mediaRegisterMs)}")
                         }
                         if (result.files.isNotEmpty()) {
                             append("\n新增文件:\n")
@@ -225,19 +234,26 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
 
     private fun formatTimings(timings: Map<String, Int>): String? {
         if (timings.isEmpty()) return null
-        val resolveMs = timings["resolve_ms"]
-        val downloadMs = timings["download_ms"]
-        val collectMs = timings["collect_files_ms"]
+        val prepareMs = timings["prepare_ms"] ?: 0
+        val databaseMs = timings["database_ms"] ?: prepareMs
+        val resolveMs = timings["resolve_ms"] ?: databaseMs
+        val downloadMs = timings["download_ms"] ?: resolveMs
+        val collectMs = timings["collect_files_ms"] ?: downloadMs
+
+        val resolveCost = (resolveMs - databaseMs).coerceAtLeast(0)
+        val downloadCost = (downloadMs - resolveMs).coerceAtLeast(0)
+        val collectCost = (collectMs - downloadMs).coerceAtLeast(0)
         return listOfNotNull(
-            resolveMs?.let { "解析 ${formatDuration(it)}" },
-            downloadMs?.let { "下载 ${formatDuration(it)}" },
-            collectMs?.let { "收尾 ${formatDuration(it)}" }
+            "解析 ${formatDuration(resolveCost)}",
+            "下载 ${formatDuration(downloadCost)}",
+            "收尾 ${formatDuration(collectCost)}",
+            "总计 ${formatDuration(collectMs)}"
         ).joinToString(" / ").takeIf { it.isNotBlank() }
     }
 
     private fun formatDuration(ms: Int): String {
         return if (ms >= 1000) {
-            "%.1fs".format(ms / 1000.0)
+            "${(ms / 100.0).roundToInt() / 10.0}s"
         } else {
             "${ms}ms"
         }
