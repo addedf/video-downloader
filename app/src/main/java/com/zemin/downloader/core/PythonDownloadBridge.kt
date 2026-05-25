@@ -141,6 +141,10 @@ data class PythonDownloadResult(
                             aid = item.optString("aid"),
                             ok = item.optBoolean("ok"),
                             durationMs = item.optInt("duration_ms", 0),
+                            tokenMs = item.optInt("token_ms", 0),
+                            signMs = item.optInt("sign_ms", 0),
+                            httpMs = item.optInt("http_ms", 0),
+                            status = item.optInt("status", 0),
                             error = item.optString("error").takeIf { it.isNotBlank() },
                             filterReason = item.optString("filter_reason").takeIf { it.isNotBlank() }
                         )
@@ -162,6 +166,10 @@ data class ApiAttempt(
     val aid: String,
     val ok: Boolean,
     val durationMs: Int,
+    val tokenMs: Int,
+    val signMs: Int,
+    val httpMs: Int,
+    val status: Int,
     val error: String?,
     val filterReason: String?
 )

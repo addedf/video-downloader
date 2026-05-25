@@ -34,6 +34,8 @@ _ANDROID_IDLE_READ_TIMEOUT_SECONDS = 25
 _ANDROID_DETAIL_AID_CANDIDATES = ("1128", "6383")
 _ANDROID_DETAIL_RETRIES = 1
 _ANDROID_DETAIL_TIMEOUT_SECONDS = 6.0
+_ANDROID_DETAIL_CONNECT_TIMEOUT_SECONDS = 3.0
+_ANDROID_DETAIL_READ_TIMEOUT_SECONDS = 5.0
 
 
 class AndroidProgressReporter:
@@ -293,6 +295,73 @@ def _patch_api_client_for_android(api_client: DouyinAPIClient) -> None:
     if getattr(api_client, "_android_metrics_patched", False):
         return
 
+    async def _ensure_ms_token_fast() -> str:
+        token = (getattr(api_client, "_ms_token", "") or "").strip()
+        if token:
+            return token
+
+        token = (api_client.cookies.get("msToken") or "").strip()
+        if not token:
+            token = api_client._ms_token_manager.gen_false_ms_token()
+
+        api_client._ms_token = token
+        api_client.cookies["msToken"] = token
+        if api_client._session and not api_client._session.closed:
+            api_client._session.cookie_jar.update_cookies({"msToken": token})
+        return token
+
+    async def _request_detail_json(
+        params: Dict[str, Any],
+        attempt: Dict[str, Any],
+        *,
+        suppress_error: bool,
+    ) -> Dict[str, Any]:
+        path = "/aweme/v1/web/aweme/detail/"
+        sign_started_at = time.perf_counter()
+        signed_url, ua = api_client.build_signed_path(path, params)
+        attempt["sign_ms"] = max(1, int((time.perf_counter() - sign_started_at) * 1000))
+
+        http_started_at = time.perf_counter()
+        try:
+            session = await api_client.get_session()
+            async with session.get(
+                signed_url,
+                headers={**api_client.headers, "User-Agent": ua},
+                proxy=api_client.proxy or None,
+                timeout=aiohttp.ClientTimeout(
+                    total=_ANDROID_DETAIL_TIMEOUT_SECONDS,
+                    sock_connect=_ANDROID_DETAIL_CONNECT_TIMEOUT_SECONDS,
+                    sock_read=_ANDROID_DETAIL_READ_TIMEOUT_SECONDS,
+                ),
+            ) as response:
+                attempt["status"] = int(response.status)
+                body = await response.read()
+                if response.status != 200:
+                    attempt["error"] = f"HTTP {response.status}"
+                    return {}
+                if not body:
+                    attempt["error"] = "EmptyBody"
+                    return {}
+                try:
+                    data = await response.json(content_type=None)
+                except Exception:
+                    try:
+                        data = json.loads(body)
+                    except Exception:
+                        attempt["error"] = "NonJsonBody"
+                        return {}
+                return data if isinstance(data, dict) else {}
+        except asyncio.TimeoutError:
+            attempt["error"] = "TimeoutError"
+            return {}
+        except Exception as exc:
+            attempt["error"] = type(exc).__name__
+            return {}
+        finally:
+            attempt["http_ms"] = max(1, int((time.perf_counter() - http_started_at) * 1000))
+
+    api_client._ensure_ms_token = _ensure_ms_token_fast
+
     async def get_video_detail(aweme_id: str, *, suppress_error: bool = False):
         started_at = time.perf_counter()
         ok = False
@@ -300,23 +369,26 @@ def _patch_api_client_for_android(api_client: DouyinAPIClient) -> None:
         try:
             for aid in _ANDROID_DETAIL_AID_CANDIDATES:
                 attempt_started_at = time.perf_counter()
-                params = await api_client._default_query()
-                params.update(
-                    {
-                        "aweme_id": aweme_id,
-                        "aid": aid,
-                    }
-                )
                 attempt: Dict[str, Any] = {"aid": aid, "ok": False}
                 try:
+                    token_started_at = time.perf_counter()
+                    params = await api_client._default_query()
+                    attempt["token_ms"] = max(
+                        1, int((time.perf_counter() - token_started_at) * 1000)
+                    )
+                    params.update(
+                        {
+                            "aweme_id": aweme_id,
+                            "aid": aid,
+                        }
+                    )
                     data = await asyncio.wait_for(
-                        api_client._request_json(
-                            "/aweme/v1/web/aweme/detail/",
+                        _request_detail_json(
                             params,
                             suppress_error=(
                                 suppress_error or aid != _ANDROID_DETAIL_AID_CANDIDATES[-1]
                             ),
-                            max_retries=_ANDROID_DETAIL_RETRIES,
+                            attempt=attempt,
                         ),
                         timeout=_ANDROID_DETAIL_TIMEOUT_SECONDS,
                     )

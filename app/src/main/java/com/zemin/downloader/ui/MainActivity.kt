@@ -296,7 +296,14 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
                 !attempt.filterReason.isNullOrBlank() -> attempt.filterReason
                 else -> "无数据"
             }
-            "${attempt.aid}:${formatDuration(attempt.durationMs)} $status"
+            val stages = listOfNotNull(
+                attempt.tokenMs.takeIf { it > 0 }?.let { "token ${formatDuration(it)}" },
+                attempt.signMs.takeIf { it > 0 }?.let { "签名 ${formatDuration(it)}" },
+                attempt.httpMs.takeIf { it > 0 }?.let { "HTTP ${formatDuration(it)}" },
+                attempt.status.takeIf { it > 0 && it != 200 }?.let { "status $it" }
+            ).joinToString(", ")
+            val stageText = if (stages.isBlank()) "" else " [$stages]"
+            "${attempt.aid}:${formatDuration(attempt.durationMs)} $status$stageText"
         }
         return "($text)"
     }
