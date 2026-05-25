@@ -131,6 +131,14 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
                         if (mediaRegisterMs > 0) {
                             append("，媒体库登记 ${formatDuration(mediaRegisterMs)}")
                         }
+                        formatDownloadMetrics(
+                            result.downloadMetrics,
+                            result.apiMetrics,
+                            result.timings
+                        )?.let {
+                            append("\n")
+                            append(it)
+                        }
                         if (result.files.isNotEmpty()) {
                             append("\n新增文件:\n")
                             append(result.files.joinToString("\n") { File(it).name })
@@ -249,6 +257,66 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
             "收尾 ${formatDuration(collectCost)}",
             "总计 ${formatDuration(collectMs)}"
         ).joinToString(" / ").takeIf { it.isNotBlank() }
+    }
+
+    private fun formatDownloadMetrics(
+        metrics: List<com.zemin.downloader.core.DownloadMetric>,
+        apiMetrics: List<com.zemin.downloader.core.ApiMetric>,
+        timings: Map<String, Int>
+    ): String? {
+        val primary = metrics.firstOrNull { it.ok && it.bytes > 0 } ?: return null
+        val size = formatBytes(primary.bytes)
+        val speed = formatSpeed(primary.speedKbps)
+        val firstChunk = if (primary.firstChunkMs > 0) {
+            "，首包 ${formatDuration(primary.firstChunkMs)}"
+        } else {
+            ""
+        }
+        val apiCost = apiMetrics.sumOf { it.durationMs }
+        val transferCost = metrics.sumOf { it.durationMs }
+        val downloadStage = ((timings["download_ms"] ?: 0) - (timings["resolve_ms"] ?: 0))
+            .coerceAtLeast(0)
+        val otherCost = (downloadStage - apiCost - transferCost).coerceAtLeast(0)
+        val detailParts = mutableListOf("下载明细: $size，均速 $speed$firstChunk")
+        if (apiCost > 0) {
+            detailParts += "详情接口 ${formatDuration(apiCost)}${formatApiAttempts(apiMetrics)}"
+        }
+        detailParts += "文件传输 ${formatDuration(transferCost)}"
+        if (otherCost > 0) detailParts += "其他 ${formatDuration(otherCost)}"
+        return detailParts.joinToString("，")
+    }
+
+    private fun formatApiAttempts(apiMetrics: List<com.zemin.downloader.core.ApiMetric>): String {
+        val attempts = apiMetrics.flatMap { it.attempts }
+        if (attempts.isEmpty()) return ""
+        val text = attempts.joinToString("/") { attempt ->
+            val status = when {
+                attempt.ok -> "成功"
+                !attempt.error.isNullOrBlank() -> attempt.error
+                !attempt.filterReason.isNullOrBlank() -> attempt.filterReason
+                else -> "无数据"
+            }
+            "${attempt.aid}:${formatDuration(attempt.durationMs)} $status"
+        }
+        return "($text)"
+    }
+
+    private fun formatBytes(bytes: Long): String {
+        if (bytes <= 0) return "0B"
+        val kb = bytes / 1024.0
+        if (kb < 1024) return "${(kb * 10).roundToInt() / 10.0}KB"
+        val mb = kb / 1024.0
+        if (mb < 1024) return "${(mb * 10).roundToInt() / 10.0}MB"
+        return "${(mb / 102.4).roundToInt() / 10.0}GB"
+    }
+
+    private fun formatSpeed(kbps: Int): String {
+        if (kbps <= 0) return "未知"
+        return if (kbps < 1024) {
+            "${kbps}KB/s"
+        } else {
+            "${(kbps / 102.4).roundToInt() / 10.0}MB/s"
+        }
     }
 
     private fun formatDuration(ms: Int): String {

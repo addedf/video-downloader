@@ -57,7 +57,9 @@ data class PythonDownloadResult(
     val success: Int,
     val failed: Int,
     val skipped: Int,
-    val timings: Map<String, Int>
+    val timings: Map<String, Int>,
+    val downloadMetrics: List<DownloadMetric>,
+    val apiMetrics: List<ApiMetric>
 ) {
     companion object {
         fun fromJson(raw: String): PythonDownloadResult {
@@ -79,6 +81,39 @@ data class PythonDownloadResult(
                     }
                 }
             }
+            val metricsJson = json.optJSONArray("download_metrics") ?: JSONArray()
+            val downloadMetrics = mutableListOf<DownloadMetric>().apply {
+                for (index in 0 until metricsJson.length()) {
+                    val item = metricsJson.optJSONObject(index) ?: continue
+                    add(
+                        DownloadMetric(
+                            fileName = item.optString("file_name"),
+                            ok = item.optBoolean("ok"),
+                            status = item.optInt("status", 0),
+                            bytes = item.optLong("bytes", 0L),
+                            expectedBytes = item.optLong("expected_bytes", 0L),
+                            durationMs = item.optInt("duration_ms", 0),
+                            firstChunkMs = item.optInt("first_chunk_ms", 0),
+                            speedKbps = item.optInt("speed_kbps", 0),
+                            error = item.optString("error").takeIf { it.isNotBlank() }
+                        )
+                    )
+                }
+            }
+            val apiMetricsJson = json.optJSONArray("api_metrics") ?: JSONArray()
+            val apiMetrics = mutableListOf<ApiMetric>().apply {
+                for (index in 0 until apiMetricsJson.length()) {
+                    val item = apiMetricsJson.optJSONObject(index) ?: continue
+                    add(
+                        ApiMetric(
+                            name = item.optString("name"),
+                            ok = item.optBoolean("ok"),
+                            durationMs = item.optInt("duration_ms", 0),
+                            attempts = parseApiAttempts(item.optJSONArray("attempts"))
+                        )
+                    )
+                }
+            }
             val error = json.optString("error").takeIf { it.isNotBlank() }
             return PythonDownloadResult(
                 ok = json.optBoolean("ok", false),
@@ -90,8 +125,55 @@ data class PythonDownloadResult(
                 success = json.optInt("success", 0),
                 failed = json.optInt("failed", 0),
                 skipped = json.optInt("skipped", 0),
-                timings = timings
+                timings = timings,
+                downloadMetrics = downloadMetrics,
+                apiMetrics = apiMetrics
             )
+        }
+
+        private fun parseApiAttempts(jsonArray: JSONArray?): List<ApiAttempt> {
+            if (jsonArray == null) return emptyList()
+            return mutableListOf<ApiAttempt>().apply {
+                for (index in 0 until jsonArray.length()) {
+                    val item = jsonArray.optJSONObject(index) ?: continue
+                    add(
+                        ApiAttempt(
+                            aid = item.optString("aid"),
+                            ok = item.optBoolean("ok"),
+                            durationMs = item.optInt("duration_ms", 0),
+                            error = item.optString("error").takeIf { it.isNotBlank() },
+                            filterReason = item.optString("filter_reason").takeIf { it.isNotBlank() }
+                        )
+                    )
+                }
+            }
         }
     }
 }
+
+data class ApiMetric(
+    val name: String,
+    val ok: Boolean,
+    val durationMs: Int,
+    val attempts: List<ApiAttempt>
+)
+
+data class ApiAttempt(
+    val aid: String,
+    val ok: Boolean,
+    val durationMs: Int,
+    val error: String?,
+    val filterReason: String?
+)
+
+data class DownloadMetric(
+    val fileName: String,
+    val ok: Boolean,
+    val status: Int,
+    val bytes: Long,
+    val expectedBytes: Long,
+    val durationMs: Int,
+    val firstChunkMs: Int,
+    val speedKbps: Int,
+    val error: String?
+)

@@ -22,13 +22,18 @@ from utils.cookie_utils import parse_cookie_header, sanitize_cookies
 from utils.validators import is_short_url, normalize_short_url
 
 _FILE_MANAGER_PATCHED = False
-_ANDROID_DOWNLOAD_CHUNK_SIZE = 256 * 1024
+_DOWNLOAD_METRICS: List[Dict[str, Any]] = []
+_API_METRICS: List[Dict[str, Any]] = []
+_ANDROID_DOWNLOAD_CHUNK_SIZE = 1024 * 1024
 _ANDROID_THREAD_COUNT = 4
-_ANDROID_RATE_LIMIT = 3.0
-_ANDROID_RETRY_TIMES = 1
+_ANDROID_RATE_LIMIT = 4.0
+_ANDROID_RETRY_TIMES = 2
 _ANDROID_TOTAL_TIMEOUT_SECONDS = 90
 _ANDROID_CONNECT_TIMEOUT_SECONDS = 10
 _ANDROID_IDLE_READ_TIMEOUT_SECONDS = 25
+_ANDROID_DETAIL_AID_CANDIDATES = ("1128", "6383")
+_ANDROID_DETAIL_RETRIES = 1
+_ANDROID_DETAIL_TIMEOUT_SECONDS = 6.0
 
 
 class AndroidProgressReporter:
@@ -85,6 +90,8 @@ async def _download_async(
     started_perf = time.perf_counter()
     started_wall = time.time()
     timings: Dict[str, int] = {}
+    _DOWNLOAD_METRICS.clear()
+    _API_METRICS.clear()
 
     app_root = Path(app_data_dir)
     output_root = Path(output_dir)
@@ -113,6 +120,7 @@ async def _download_async(
     reporter = AndroidProgressReporter()
     try:
         async with DouyinAPIClient(cookie_manager.get_cookies(), proxy=config.get("proxy")) as api_client:
+            _patch_api_client_for_android(api_client)
             resolved_url = await _resolve_input_url(url, api_client)
             _mark_timing(timings, "resolve_ms", started_perf)
             parsed = URLParser.parse(resolved_url)
@@ -151,6 +159,8 @@ async def _download_async(
                 "files": files,
                 "message": _summary_message(result, files),
                 "timings": timings,
+                "download_metrics": list(_DOWNLOAD_METRICS),
+                "api_metrics": list(_API_METRICS),
             }
     finally:
         await database.close()
@@ -196,6 +206,9 @@ def _patch_file_manager_for_android() -> None:
 
         final_path = save_path
         tmp_path = save_path.with_suffix(save_path.suffix + ".tmp")
+        started_at = time.perf_counter()
+        first_chunk_ms: Optional[int] = None
+        written = 0
         try:
             async with session.get(
                 url,
@@ -208,6 +221,15 @@ def _patch_file_manager_for_android() -> None:
                 proxy=proxy or None,
             ) as response:
                 if response.status != 200:
+                    _record_download_metric(
+                        save_path,
+                        started_at,
+                        status=response.status,
+                        bytes_written=0,
+                        expected_size=response.content_length,
+                        first_chunk_ms=first_chunk_ms,
+                        ok=False,
+                    )
                     return False
 
                 final_path = self._resolve_save_path_from_content_type(
@@ -217,20 +239,47 @@ def _patch_file_manager_for_android() -> None:
                 )
                 tmp_path = final_path.with_suffix(final_path.suffix + ".tmp")
                 expected_size = response.content_length
-                written = 0
                 async with aiofiles.open(tmp_path, "wb") as file:
                     async for chunk in response.content.iter_chunked(_ANDROID_DOWNLOAD_CHUNK_SIZE):
+                        if first_chunk_ms is None:
+                            first_chunk_ms = int((time.perf_counter() - started_at) * 1000)
                         await file.write(chunk)
                         written += len(chunk)
 
                 if expected_size is not None and written != expected_size:
                     tmp_path.unlink(missing_ok=True)
+                    _record_download_metric(
+                        final_path,
+                        started_at,
+                        status=response.status,
+                        bytes_written=written,
+                        expected_size=expected_size,
+                        first_chunk_ms=first_chunk_ms,
+                        ok=False,
+                    )
                     return False
 
                 os.replace(str(tmp_path), str(final_path))
+                _record_download_metric(
+                    final_path,
+                    started_at,
+                    status=response.status,
+                    bytes_written=written,
+                    expected_size=expected_size,
+                    first_chunk_ms=first_chunk_ms,
+                    ok=True,
+                )
                 return final_path if return_saved_path else True
-        except Exception:
+        except Exception as exc:
             tmp_path.unlink(missing_ok=True)
+            _record_download_metric(
+                final_path,
+                started_at,
+                bytes_written=written,
+                first_chunk_ms=first_chunk_ms,
+                ok=False,
+                error=type(exc).__name__,
+            )
             return False
         finally:
             if should_close:
@@ -238,6 +287,103 @@ def _patch_file_manager_for_android() -> None:
 
     FileManager.download_file = download_file
     _FILE_MANAGER_PATCHED = True
+
+
+def _patch_api_client_for_android(api_client: DouyinAPIClient) -> None:
+    if getattr(api_client, "_android_metrics_patched", False):
+        return
+
+    async def get_video_detail(aweme_id: str, *, suppress_error: bool = False):
+        started_at = time.perf_counter()
+        ok = False
+        attempts: List[Dict[str, Any]] = []
+        try:
+            for aid in _ANDROID_DETAIL_AID_CANDIDATES:
+                attempt_started_at = time.perf_counter()
+                params = await api_client._default_query()
+                params.update(
+                    {
+                        "aweme_id": aweme_id,
+                        "aid": aid,
+                    }
+                )
+                attempt: Dict[str, Any] = {"aid": aid, "ok": False}
+                try:
+                    data = await asyncio.wait_for(
+                        api_client._request_json(
+                            "/aweme/v1/web/aweme/detail/",
+                            params,
+                            suppress_error=(
+                                suppress_error or aid != _ANDROID_DETAIL_AID_CANDIDATES[-1]
+                            ),
+                            max_retries=_ANDROID_DETAIL_RETRIES,
+                        ),
+                        timeout=_ANDROID_DETAIL_TIMEOUT_SECONDS,
+                    )
+                except asyncio.TimeoutError:
+                    attempt["error"] = "TimeoutError"
+                    attempts.append(_finish_api_attempt(attempt, attempt_started_at))
+                    continue
+                except Exception as exc:
+                    attempt["error"] = type(exc).__name__
+                    attempts.append(_finish_api_attempt(attempt, attempt_started_at))
+                    continue
+
+                detail = data.get("aweme_detail") if isinstance(data, dict) else None
+                attempt["ok"] = bool(detail)
+                filter_info = data.get("filter_detail") if isinstance(data, dict) else None
+                if isinstance(filter_info, dict) and filter_info.get("filter_reason"):
+                    attempt["filter_reason"] = str(filter_info["filter_reason"])
+                attempts.append(_finish_api_attempt(attempt, attempt_started_at))
+                if detail:
+                    ok = True
+                    return detail
+
+            return None
+        finally:
+            _API_METRICS.append(
+                {
+                    "name": "get_video_detail",
+                    "ok": ok,
+                    "duration_ms": max(1, int((time.perf_counter() - started_at) * 1000)),
+                    "attempts": attempts,
+                }
+            )
+
+    api_client.get_video_detail = get_video_detail
+    setattr(api_client, "_android_metrics_patched", True)
+
+
+def _finish_api_attempt(attempt: Dict[str, Any], started_at: float) -> Dict[str, Any]:
+    attempt["duration_ms"] = max(1, int((time.perf_counter() - started_at) * 1000))
+    return attempt
+
+
+def _record_download_metric(
+    path: Path,
+    started_at: float,
+    *,
+    bytes_written: int,
+    ok: bool,
+    status: Optional[int] = None,
+    expected_size: Optional[int] = None,
+    first_chunk_ms: Optional[int] = None,
+    error: Optional[str] = None,
+) -> None:
+    duration_ms = max(1, int((time.perf_counter() - started_at) * 1000))
+    metric = {
+        "file_name": path.name,
+        "ok": ok,
+        "status": status,
+        "bytes": int(bytes_written or 0),
+        "expected_bytes": int(expected_size or 0),
+        "duration_ms": duration_ms,
+        "first_chunk_ms": int(first_chunk_ms or 0),
+        "speed_kbps": int((bytes_written or 0) / max(duration_ms / 1000, 0.001) / 1024),
+    }
+    if error:
+        metric["error"] = error
+    _DOWNLOAD_METRICS.append(metric)
 
 
 def _parse_cookies(cookie_header: str) -> Dict[str, str]:
@@ -341,4 +487,6 @@ def _error(message: str, output_root: Path, timings: Optional[Dict[str, int]] = 
         "output_dir": str(output_root),
         "files": [],
         "timings": timings or {},
+        "download_metrics": [],
+        "api_metrics": [],
     }
