@@ -36,6 +36,8 @@ _ANDROID_DETAIL_RETRIES = 1
 _ANDROID_DETAIL_TIMEOUT_SECONDS = 6.0
 _ANDROID_DETAIL_CONNECT_TIMEOUT_SECONDS = 3.0
 _ANDROID_DETAIL_READ_TIMEOUT_SECONDS = 5.0
+_ANDROID_MS_TOKEN_CONF_TIMEOUT_SECONDS = 2.0
+_ANDROID_MS_TOKEN_REQUEST_TIMEOUT_SECONDS = 2.5
 
 
 class AndroidProgressReporter:
@@ -298,11 +300,36 @@ def _patch_api_client_for_android(api_client: DouyinAPIClient) -> None:
     async def _ensure_ms_token_fast() -> str:
         token = (getattr(api_client, "_ms_token", "") or "").strip()
         if token:
+            setattr(api_client, "_android_ms_token_source", "cached")
             return token
 
         token = (api_client.cookies.get("msToken") or "").strip()
         if not token:
-            token = api_client._ms_token_manager.gen_false_ms_token()
+            original_conf_timeout = getattr(api_client._ms_token_manager, "conf_timeout_seconds", None)
+            original_token_timeout = getattr(
+                api_client._ms_token_manager, "token_timeout_seconds", None
+            )
+            api_client._ms_token_manager.conf_timeout_seconds = (
+                _ANDROID_MS_TOKEN_CONF_TIMEOUT_SECONDS
+            )
+            api_client._ms_token_manager.token_timeout_seconds = (
+                _ANDROID_MS_TOKEN_REQUEST_TIMEOUT_SECONDS
+            )
+            try:
+                token = await asyncio.to_thread(api_client._ms_token_manager.gen_real_ms_token)
+            finally:
+                if original_conf_timeout is not None:
+                    api_client._ms_token_manager.conf_timeout_seconds = original_conf_timeout
+                if original_token_timeout is not None:
+                    api_client._ms_token_manager.token_timeout_seconds = original_token_timeout
+
+            if token:
+                setattr(api_client, "_android_ms_token_source", "real")
+            else:
+                token = api_client._ms_token_manager.gen_false_ms_token()
+                setattr(api_client, "_android_ms_token_source", "fallback")
+        else:
+            setattr(api_client, "_android_ms_token_source", "cookie")
 
         api_client._ms_token = token
         api_client.cookies["msToken"] = token
@@ -375,6 +402,9 @@ def _patch_api_client_for_android(api_client: DouyinAPIClient) -> None:
                     params = await api_client._default_query()
                     attempt["token_ms"] = max(
                         1, int((time.perf_counter() - token_started_at) * 1000)
+                    )
+                    attempt["token_source"] = getattr(
+                        api_client, "_android_ms_token_source", "unknown"
                     )
                     params.update(
                         {

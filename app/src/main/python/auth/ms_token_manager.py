@@ -23,8 +23,9 @@ class MsTokenManager:
     2) 失败时回退到随机 msToken，保证请求参数完整
     """
 
-    F2_CONF_URL = "https://raw.githubusercontent.com/Johnserf-Seed/f2/main/f2/conf/conf.yaml"
+    F2_CONF_URL = "https://gitee.com/maomao999/video-downloader/raw/python/conf.yaml"
     _cached_conf: Optional[Dict[str, Any]] = None
+    _cached_conf_url: str = ""
     _cached_at: float = 0
     _cache_ttl_seconds: int = 3600
     _lock = Lock()
@@ -33,11 +34,15 @@ class MsTokenManager:
         self,
         user_agent: str,
         conf_url: Optional[str] = None,
-        timeout_seconds: int = 15,
+        timeout_seconds: float = 5,
+        conf_timeout_seconds: Optional[float] = None,
+        token_timeout_seconds: Optional[float] = None,
     ):
         self.user_agent = user_agent
         self.conf_url = conf_url or self.F2_CONF_URL
-        self.timeout_seconds = timeout_seconds
+        self.timeout_seconds = float(timeout_seconds)
+        self.conf_timeout_seconds = float(conf_timeout_seconds or self.timeout_seconds)
+        self.token_timeout_seconds = float(token_timeout_seconds or self.timeout_seconds)
 
     @classmethod
     def _is_valid_ms_token(cls, token: Optional[str]) -> bool:
@@ -90,7 +95,7 @@ class MsTokenManager:
         )
 
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout_seconds) as resp:
+            with urllib.request.urlopen(request, timeout=self.token_timeout_seconds) as resp:
                 token = self._extract_ms_token_from_headers(resp.headers)
             if self._is_valid_ms_token(token):
                 logger.debug("Generated real msToken via mssdk endpoint")
@@ -105,11 +110,15 @@ class MsTokenManager:
     def _load_f2_ms_token_conf(self) -> Optional[Dict[str, Any]]:
         now = time.time()
         with self._lock:
-            if self._cached_conf and (now - self._cached_at) < self._cache_ttl_seconds:
+            if (
+                self._cached_conf
+                and self._cached_conf_url == self.conf_url
+                and (now - self._cached_at) < self._cache_ttl_seconds
+            ):
                 return self._cached_conf
 
         try:
-            with urllib.request.urlopen(self.conf_url, timeout=self.timeout_seconds) as resp:
+            with urllib.request.urlopen(self.conf_url, timeout=self.conf_timeout_seconds) as resp:
                 raw = resp.read().decode("utf-8")
             data = yaml.safe_load(raw) or {}
             ms_conf = (
@@ -126,6 +135,7 @@ class MsTokenManager:
 
             with self._lock:
                 self._cached_conf = ms_conf
+                self._cached_conf_url = self.conf_url
                 self._cached_at = now
             return ms_conf
         except Exception as exc:
