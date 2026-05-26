@@ -3,10 +3,15 @@ package com.zemin.downloader.core
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.zemin.downloader.DouyinDownloaderApp
 
-class CookieStorage(context: Context) {
+object CookieStorage {
 
-    private val prefs: SharedPreferences = context.getSharedPreferences("douyin_cookies", Context.MODE_PRIVATE)
+    private val prefs: SharedPreferences
+        get() = DouyinDownloaderApp.appContext.getSharedPreferences(
+            "douyin_cookies",
+            Context.MODE_PRIVATE
+        )
 
     fun saveCookies(cookieString: String) {
         prefs.edit().putString("cookie_string", cookieString).apply()

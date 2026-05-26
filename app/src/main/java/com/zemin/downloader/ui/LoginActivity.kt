@@ -29,14 +29,13 @@ class LoginActivity : BaseActivity<ActivityLoginBinding>(ActivityLoginBinding::i
         )
     }
 
-    private lateinit var cookieStorage: CookieStorage
+    private val cookieStorage = CookieStorage
     private var loginDone = false
     private var loadedIesDouyin = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         supportActionBar?.hide()
-        cookieStorage = CookieStorage(this)
 
         CookieManager.getInstance().setAcceptCookie(true)
 

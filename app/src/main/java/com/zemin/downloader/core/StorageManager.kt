@@ -7,9 +7,13 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import com.zemin.downloader.DouyinDownloaderApp
 import java.io.File
 
-class StorageManager(private val context: Context) {
+object StorageManager {
+
+    private val context: Context
+        get() = DouyinDownloaderApp.appContext
 
     fun getPythonDownloadDir(): File {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {

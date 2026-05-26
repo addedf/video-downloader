@@ -22,9 +22,9 @@ import kotlin.math.roundToInt
 
 class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::inflate) {
 
-    private lateinit var cookieStorage: CookieStorage
-    private lateinit var storageManager: StorageManager
-    private lateinit var pythonBridge: PythonDownloadBridge
+    private val cookieStorage = CookieStorage
+    private val storageManager = StorageManager
+    private val pythonBridge = PythonDownloadBridge
     private var isDownloading = false
 
     private val loginLauncher = registerForActivityResult(
@@ -40,10 +40,6 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        cookieStorage = CookieStorage(this)
-        storageManager = StorageManager(this)
-        pythonBridge = PythonDownloadBridge(this)
 
         requestStoragePermissionIfNeeded()
         refreshLoginState()

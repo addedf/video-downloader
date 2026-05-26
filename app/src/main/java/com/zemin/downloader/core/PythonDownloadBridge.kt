@@ -1,40 +1,44 @@
 package com.zemin.downloader.core
 
 import android.content.Context
+import com.chaquo.python.PyObject
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
+import com.zemin.downloader.DouyinDownloaderApp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 
-class PythonDownloadBridge(private val context: Context) {
+object PythonDownloadBridge {
 
-    suspend fun warmUp() = withContext(Dispatchers.IO) {
-        val appDataDir = File(context.filesDir, "python-runtime").apply { mkdirs() }
-        val py = getPython()
-        py.getModule("android_entry")
-            .callAttr("warm_up", appDataDir.absolutePath)
+    private val context: Context
+        get() = DouyinDownloaderApp.appContext
+
+    suspend fun warmUp(): PyObject? {
+        return withContext(Dispatchers.IO) {
+            val appDataDir = File(context.filesDir, "python-runtime").apply { mkdirs() }
+            val appDir = appDataDir.absolutePath
+            val outDir = StorageManager.getPythonDownloadDir()
+            val cookieString = CookieStorage.getCookieString()
+
+            val py = getPython()
+            py.getModule("android_entry").callAttr("warm_up", appDir, outDir, cookieString)
+        }
     }
 
     suspend fun download(
-        inputText: String,
-        cookieHeader: String,
-        outputDir: File
+        inputText: String, cookieHeader: String, outputDir: File
     ): PythonDownloadResult = withContext(Dispatchers.IO) {
         outputDir.mkdirs()
         val appDataDir = File(context.filesDir, "python-runtime").apply { mkdirs() }
+        val appDir = appDataDir.absolutePath
         val py = getPython()
-        val raw = py.getModule("android_entry")
-            .callAttr(
-                "download",
-                inputText,
-                cookieHeader,
-                outputDir.absolutePath,
-                appDataDir.absolutePath
-            )
-            .toString()
+        py.getModule("android_entry")
+            .callAttr("warm_up", appDir, outputDir.absolutePath, cookieHeader)
+        val raw =
+            py.getModule("android_entry").callAttr("download", inputText, cookieHeader).toString()
 
         PythonDownloadResult.fromJson(raw)
     }
@@ -51,7 +55,7 @@ data class PythonDownloadResult(
     val ok: Boolean,
     val message: String,
     val error: String?,
-    val outputDir: String,
+    val outputDir: String?,
     val files: List<String>,
     val total: Int,
     val success: Int,
@@ -95,8 +99,7 @@ data class PythonDownloadResult(
                             durationMs = item.optInt("duration_ms", 0),
                             firstChunkMs = item.optInt("first_chunk_ms", 0),
                             speedKbps = item.optInt("speed_kbps", 0),
-                            error = item.optString("error").takeIf { it.isNotBlank() }
-                        )
+                            error = item.optString("error").takeIf { it.isNotBlank() })
                     )
                 }
             }
@@ -146,8 +149,8 @@ data class PythonDownloadResult(
                             httpMs = item.optInt("http_ms", 0),
                             status = item.optInt("status", 0),
                             error = item.optString("error").takeIf { it.isNotBlank() },
-                            filterReason = item.optString("filter_reason").takeIf { it.isNotBlank() }
-                        )
+                            filterReason = item.optString("filter_reason")
+                                .takeIf { it.isNotBlank() })
                     )
                 }
             }
@@ -156,10 +159,7 @@ data class PythonDownloadResult(
 }
 
 data class ApiMetric(
-    val name: String,
-    val ok: Boolean,
-    val durationMs: Int,
-    val attempts: List<ApiAttempt>
+    val name: String, val ok: Boolean, val durationMs: Int, val attempts: List<ApiAttempt>
 )
 
 data class ApiAttempt(
