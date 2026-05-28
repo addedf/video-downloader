@@ -4,14 +4,14 @@ package com.zemin.downloader.core
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
-import com.zemin.downloader.DouyinDownloaderApp
+import com.zemin.downloader.appContext
 
 object CookieStorage {
     private const val SP_FILE_NAME = "douyin_cookies"
     private const val KEY_COOKIE = "cookie_string"
 
     private val prefs: SharedPreferences
-        get() = DouyinDownloaderApp.appContext.getSharedPreferences(
+        get() = appContext.getSharedPreferences(
             SP_FILE_NAME, Context.MODE_PRIVATE
         )
 

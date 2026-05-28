@@ -3,17 +3,17 @@ package com.zemin.downloader.core
 import android.content.Context
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
-import com.zemin.downloader.DouyinDownloaderApp
+import com.zemin.downloader.appContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
 object PythonDownloadBridge {
-    private const val PY_FILE_NAME_DOU_YIN = "cli.dy_android_entry"
+    private const val PY_FILE_NAME_DOU_YIN = "dy.cli.dy_android_entry"
 
     private val context: Context
-        get() = DouyinDownloaderApp.appContext
+        get() = appContext
 
     private val python: Python
         get() {

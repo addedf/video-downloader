@@ -40,6 +40,7 @@ def install_android_api_diagnostics() -> None:
         return
     _patch_ms_token_manager()
     _patch_api_client()
+    _patch_force_download()
     _patch_asset_downloads()
     _PATCHED = True
     logger.info("android_api_diagnostics.installed")
@@ -196,6 +197,18 @@ def _patch_api_client() -> None:
     DouyinAPIClient._default_query = default_query
     DouyinAPIClient._request_json = request_json
     DouyinAPIClient.get_video_detail = get_video_detail
+
+
+def _patch_force_download() -> None:
+    original_should_download = BaseDownloader._should_download
+
+    async def should_download(self: BaseDownloader, aweme_id: str) -> bool:
+        if self.config.get("force_download", False):
+            logger.info("force_download.enabled aweme_id=%s", aweme_id)
+            return True
+        return await original_should_download(self, aweme_id)
+
+    BaseDownloader._should_download = should_download
 
 
 def _patch_asset_downloads() -> None:

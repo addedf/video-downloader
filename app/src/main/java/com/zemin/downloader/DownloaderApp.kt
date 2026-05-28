@@ -8,16 +8,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
-class DouyinDownloaderApp : Application() {
+val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+val appContext: Context
+    get() = DownloaderApp.instance.applicationContext
+
+class DownloaderApp : Application() {
 
     companion object {
-        lateinit var instance: DouyinDownloaderApp
+        lateinit var instance: DownloaderApp
             private set
-
-        val appContext: Context
-            get() = instance.applicationContext
     }
 
     override fun onCreate() {

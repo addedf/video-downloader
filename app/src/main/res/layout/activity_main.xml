@@ -13,46 +13,58 @@
         android:padding="16dp">
 
         <LinearLayout
-            android:id="@+id/loginSection"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
             android:background="@drawable/bg_section_login"
-            android:orientation="vertical">
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="16dp">
 
-            <TextView
-                android:layout_width="match_parent"
+            <LinearLayout
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:text="账号"
-                android:textColor="@color/dy_text_muted"
-                android:textSize="13sp" />
+                android:layout_marginStart="12dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
 
-            <TextView
-                android:id="@+id/tvLoginState"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="未登录"
-                android:textColor="@color/dy_primary_light"
-                android:textSize="18sp"
-                android:textStyle="bold" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="抖音账号"
+                    android:textColor="@color/dy_text_muted"
+                    android:textSize="13sp" />
+
+                <TextView
+                    android:id="@+id/tvLoginState"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="未登录"
+                    android:textColor="@color/dy_primary_light"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
 
             <Button
                 android:id="@+id/btnLogin"
-                android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:layout_marginTop="12dp"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
                 android:backgroundTint="@color/dy_primary"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp"
                 android:text="登录抖音"
-                android:textColor="@color/white" />
+                android:textColor="@color/white"
+                android:textSize="14sp" />
         </LinearLayout>
 
         <LinearLayout
             android:id="@+id/downloadSection"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
             android:background="@drawable/bg_section_download"
-            android:orientation="vertical">
+            android:orientation="vertical"
+            android:padding="16dp">
 
             <TextView
                 android:layout_width="match_parent"

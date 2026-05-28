@@ -1,12 +1,11 @@
 import asyncio
 import json
-import os
 import re
-import sys
 import time
 import traceback
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
 from .android_api_diagnostics import (
     consume_android_metrics,
     install_android_api_diagnostics,
@@ -35,7 +34,7 @@ def warm_up(app_data_dir: str, output_dir: str, cookie_header: str) -> str:
     try:
         flow.info("warm_up.begin", app_data_dir=app_data_dir, output_dir=output_dir)
         with flow.stage("prepare_runtime"):
-            _prepare_runtime(Path(app_data_dir))
+            _prepare_runtime()
         with flow.stage("init_config", has_cookie=bool(cookie_header)):
             asyncio.run(_init_config(app_data_dir, output_dir, cookie_header))
         flow.mark_total()
@@ -47,14 +46,7 @@ def warm_up(app_data_dir: str, output_dir: str, cookie_header: str) -> str:
         return json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False)
 
 
-def _prepare_runtime(app_root: Path) -> None:
-    os.environ.setdefault("HOME", str(app_root))
-    os.environ.setdefault("TMPDIR", str(app_root / "tmp"))
-    os.environ.setdefault("PYTHONUTF8", "1")
-    Path(os.environ["TMPDIR"]).mkdir(parents=True, exist_ok=True)
-    root = Path(__file__).resolve().parent
-    if str(root) not in sys.path:
-        sys.path.insert(0, str(root))
+def _prepare_runtime() -> None:
     install_android_api_diagnostics()
 
 
@@ -222,6 +214,7 @@ def _build_config(cookies: Dict[str, str], output_root: Path, app_root: Path) ->
         retry_times=_ANDROID_RETRY_TIMES,
         database=_ANDROID_USE_DATABASE,
         database_path=str(app_root / "dy_downloader.db"),
+        force_download=True,
         music=False,
         cover=False,
         avatar=False,

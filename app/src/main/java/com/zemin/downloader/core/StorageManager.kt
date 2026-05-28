@@ -7,13 +7,13 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
-import com.zemin.downloader.DouyinDownloaderApp
+import com.zemin.downloader.appContext
 import java.io.File
 
 object StorageManager {
 
     private val context: Context
-        get() = DouyinDownloaderApp.appContext
+        get() = appContext
 
     fun getAppFileDir(): File {
         return File(context.filesDir, "python-runtime").apply {
@@ -23,7 +23,7 @@ object StorageManager {
 
     fun getPythonDownloadDir(): File {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            File(context.getExternalFilesDir(Environment.DIRECTORY_MOVIES), "Douyin")
+            File(context.cacheDir, "python-downloads")
         } else {
             File(
                 Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES),
@@ -34,9 +34,61 @@ object StorageManager {
         }
     }
 
+    fun cleanupPythonDownloadCache() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+        getPythonDownloadDir().deleteRecursively()
+        getPythonDownloadDir().mkdirs()
+    }
+
+    fun cleanupPythonDownloadSidecars() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+        val cacheRoot = getPythonDownloadDir()
+        cacheRoot.walkBottomUp().forEach { file ->
+            if (file == cacheRoot) return@forEach
+            if (file.isDirectory) {
+                if (file.list()?.isEmpty() == true) file.delete()
+                return@forEach
+            }
+            val extension = file.extension.lowercase()
+            val isMedia = extension in MEDIA_EXTENSIONS
+            if (!isMedia || extension == "tmp") {
+                file.delete()
+            }
+        }
+    }
+
+    fun deleteTemporaryDownloadFile(file: File): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
+        val cacheRoot = getPythonDownloadDir().canonicalFile
+        val target = file.canonicalFile
+        if (!target.path.startsWith(cacheRoot.path + File.separator)) return false
+        val deleted = target.delete()
+        pruneEmptyParents(target.parentFile, cacheRoot)
+        return deleted
+    }
+
+    private fun pruneEmptyParents(start: File?, stopAt: File) {
+        var current = start
+        while (current != null && current != stopAt) {
+            val children = current.list()
+            if (children == null || children.isNotEmpty()) return
+            if (!current.delete()) return
+            current = current.parentFile
+        }
+    }
+
     fun registerMediaFile(file: File): Uri? {
         val extension = file.extension.lowercase()
-        val mimeType = when (extension) {
+        val mimeType = mimeTypeForExtension(extension) ?: return null
+        return when {
+            mimeType.startsWith("video/") -> registerVideoToMediaStore(file, mimeType)
+            mimeType.startsWith("image/") -> registerImageToMediaStore(file, mimeType)
+            else -> null
+        }
+    }
+
+    private fun mimeTypeForExtension(extension: String): String? {
+        return when (extension) {
             "mp4" -> "video/mp4"
             "mov" -> "video/quicktime"
             "m4a" -> "audio/mp4"
@@ -45,14 +97,11 @@ object StorageManager {
             "png" -> "image/png"
             "webp" -> "image/webp"
             "gif" -> "image/gif"
-            else -> return null
-        }
-        return when {
-            mimeType.startsWith("video/") -> registerVideoToMediaStore(file, mimeType)
-            mimeType.startsWith("image/") -> registerImageToMediaStore(file, mimeType)
             else -> null
         }
     }
+
+    private val MEDIA_EXTENSIONS = setOf("mp4", "mov", "m4a", "mp3", "jpg", "jpeg", "png", "webp", "gif")
 
     private fun registerVideoToMediaStore(file: File, mimeType: String = "video/mp4"): Uri? {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {

@@ -94,6 +94,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         lifecycleScope.launch {
             val taskStartedAt = System.currentTimeMillis()
             try {
+                storageManager.cleanupPythonDownloadCache()
                 val result = pythonBridge.download(inputText = shareText)
 
                 binding.progressBar.isIndeterminate = false
@@ -102,11 +103,16 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
                 val mediaRegisterStartedAt = System.currentTimeMillis()
                 val registeredUris = result.files
                     .map(::File)
-                    .mapNotNull { storageManager.registerMediaFile(it) }
+                    .mapNotNull { file ->
+                        storageManager.registerMediaFile(file)?.also {
+                            storageManager.deleteTemporaryDownloadFile(file)
+                        }
+                    }
                 val mediaRegisterMs = (System.currentTimeMillis() - mediaRegisterStartedAt).toInt()
                 val taskTotalMs = (System.currentTimeMillis() - taskStartedAt).toInt()
 
                 if (result.ok || result.skipped > 0) {
+                    storageManager.cleanupPythonDownloadSidecars()
                     binding.tvStatus.text = "下载完成"
                     binding.tvInfo.visibility = View.VISIBLE
                     binding.tvInfo.text = formatDownloadSummary(
@@ -222,45 +228,37 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
             .filterNot { it.name == "download_manifest.jsonl" }
             .filterNot { it.extension.equals("json", ignoreCase = true) }
             .filterNot { it.extension.equals("jsonl", ignoreCase = true) }
-            .map { it.name }
+            .map { compactFileName(it.name) }
+            .distinct()
 
         return buildString {
-            append("完成")
-            append(" · ")
+            append("完成：")
             append(formatCounts(result))
 
-            formatDownloadMetrics(
-                result.downloadMetrics,
-                result.apiMetrics,
-                result.timings
+            formatProcessLog(
+                result = result,
+                mediaRegisterMs = mediaRegisterMs,
+                taskTotalMs = taskTotalMs,
             )?.let {
                 append("\n")
                 append(it)
             }
 
-            formatTimings(result.timings)?.let {
-                append("\n耗时: ")
-                append(it)
-            }
-
-            append("\n总耗时: ${formatDuration(taskTotalMs)}")
-            if (mediaRegisterMs > 0) {
-                append(" · 媒体库 ${formatDuration(mediaRegisterMs)}")
-            }
             if (mediaCount > 0) {
-                append(" · 已登记 $mediaCount 个")
-            }
-
-            result.outputDir?.takeIf { it.isNotBlank() }?.let {
-                append("\n保存: ")
-                append(formatOutputDir(it))
+                append("\n下载目录：$mediaCount 个 · ")
+                append(formatOutputDir(result.outputDir.orEmpty()))
+            } else {
+                result.outputDir?.takeIf { it.isNotBlank() }?.let {
+                    append("\n下载目录：")
+                    append(formatOutputDir(it))
+                }
             }
 
             if (visibleFiles.isNotEmpty()) {
-                append("\n文件: ")
-                append(visibleFiles.take(2).joinToString("\n") { ellipsizeMiddle(it, 38) })
+                append("\n文件名称：")
+                append(visibleFiles.take(2).joinToString("、"))
                 if (visibleFiles.size > 2) {
-                    append("\n等 ${visibleFiles.size} 个文件")
+                    append(" 等 ${visibleFiles.size} 个")
                 }
             }
         }
@@ -273,32 +271,24 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         return parts.joinToString(" / ")
     }
 
-    private fun formatTimings(timings: Map<String, Int>): String? {
-        if (timings.isEmpty()) return null
-        val resolveCost = timings["resolve_input_url_ms"] ?: 0
-        val parseCost = timings["parse_url_ms"] ?: 0
-        val downloadCost = timings["download_content_ms"] ?: 0
-        val totalCost = timings["total_ms"] ?: (resolveCost + parseCost + downloadCost)
-        return listOfNotNull(
-            "解析 ${formatDuration(resolveCost + parseCost)}",
-            "下载 ${formatDuration(downloadCost)}",
-            "总计 ${formatDuration(totalCost)}"
-        ).joinToString(" / ").takeIf { it.isNotBlank() }
-    }
-
-    private fun formatDownloadMetrics(
-        metrics: List<com.zemin.downloader.core.DownloadMetric>,
-        apiMetrics: List<com.zemin.downloader.core.ApiMetric>,
-        timings: Map<String, Int>
+    private fun formatProcessLog(
+        result: PythonDownloadResult,
+        mediaRegisterMs: Int,
+        taskTotalMs: Int,
     ): String? {
+        val metrics = result.downloadMetrics
+        val apiMetrics = result.apiMetrics
+        val timings = result.timings
         val primary = metrics.firstOrNull { it.ok && it.bytes > 0 } ?: return null
         val size = formatBytes(primary.bytes)
         val speed = formatSpeed(primary.speedKbps)
         val firstChunk = if (primary.firstChunkMs > 0) {
-            " · 首包 ${formatDuration(primary.firstChunkMs)}"
+            "首包 ${formatDuration(primary.firstChunkMs)}"
         } else {
-            ""
+            null
         }
+        val resolveCost = (timings["resolve_input_url_ms"] ?: 0) +
+            (timings["parse_url_ms"] ?: 0)
         val detailCost = apiMetrics
             .filter { it.name == "get_video_detail" }
             .sumOf { it.durationMs }
@@ -307,26 +297,50 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         val downloadStage = (timings["download_content_ms"] ?: 0).coerceAtLeast(0)
         val otherCost = (downloadStage - detailCost - transferCost).coerceAtLeast(0)
         val host = (primary.finalHost ?: primary.host)?.let { ellipsizeMiddle(it, 24) }
-        val detailParts = mutableListOf("文件 $size · $speed$firstChunk")
-        if (!host.isNullOrBlank()) {
-            detailParts += "CDN $host"
+        val firstLine = mutableListOf<String>()
+        if (resolveCost > 0) firstLine += "解析 ${formatDuration(resolveCost)}"
+        if (detailCost > 0) firstLine += "详情 ${formatDuration(detailCost)}"
+        firstLine += "传输 ${formatDuration(transferCost)}"
+
+        val secondLine = mutableListOf<String>()
+        if (mediaRegisterMs > 0) secondLine += "入库 ${formatDuration(mediaRegisterMs)}"
+        if (otherCost > 0) secondLine += "其他 ${formatDuration(otherCost)}"
+        secondLine += "总计 ${formatDuration(taskTotalMs)}"
+
+        val fileLine = mutableListOf("文件 $size", "均速 $speed")
+        firstChunk?.let { fileLine += it }
+
+        return buildString {
+            append("耗时：")
+            append(firstLine.joinToString(" · "))
+            append("\n")
+            append("      ")
+            append(secondLine.joinToString(" · "))
+            append("\n下载：")
+            append(fileLine.joinToString(" · "))
+            if (!host.isNullOrBlank()) {
+                append("\nCDN：")
+                append(host)
+            }
         }
-        if (detailCost > 0) {
-            detailParts += "详情 ${formatDuration(detailCost)}"
-        }
-        detailParts += "传输 ${formatDuration(transferCost)}"
-        if (otherCost > 0) detailParts += "其他 ${formatDuration(otherCost)}"
-        return detailParts.joinToString(" · ")
     }
 
     private fun formatOutputDir(path: String): String {
         val normalized = path.replace('\\', '/').trimEnd('/')
-        val marker = "/files/"
-        val markerIndex = normalized.indexOf(marker)
-        if (markerIndex >= 0) {
-            return normalized.substring(markerIndex + marker.length)
-        }
-        return ellipsizeMiddle(normalized, 42)
+        if (normalized.contains("/cache/python-downloads")) return "Movies/Douyin"
+        if (normalized.contains("/Movies/Douyin")) return "Movies/Douyin"
+        return ellipsizeMiddle(normalized.substringAfterLast("/"), 32)
+    }
+
+    private fun compactFileName(name: String): String {
+        val stem = name.substringBeforeLast('.', name)
+        val extension = name.substringAfterLast('.', "")
+        val compact = stem
+            .replace(Regex("^\\d{4}-\\d{2}-\\d{2}_?"), "")
+            .replace(Regex("_?\\d{15,20}$"), "")
+            .ifBlank { stem }
+        val shortName = ellipsizeMiddle(compact, 24)
+        return if (extension.isBlank()) shortName else "$shortName.$extension"
     }
 
     private fun ellipsizeMiddle(value: String, maxLength: Int): String {
