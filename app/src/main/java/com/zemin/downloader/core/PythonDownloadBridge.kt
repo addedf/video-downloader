@@ -1,7 +1,6 @@
 package com.zemin.downloader.core
 
 import android.content.Context
-import com.chaquo.python.PyObject
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
 import com.zemin.downloader.DouyinDownloaderApp
@@ -9,45 +8,37 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.File
 
 object PythonDownloadBridge {
+    private const val PY_FILE_NAME_DOU_YIN = "android_entry"
 
     private val context: Context
         get() = DouyinDownloaderApp.appContext
 
-    suspend fun warmUp(): PyObject? {
-        return withContext(Dispatchers.IO) {
-            val appDataDir = File(context.filesDir, "python-runtime").apply { mkdirs() }
-            val appDir = appDataDir.absolutePath
-            val outDir = StorageManager.getPythonDownloadDir()
-            val cookieString = CookieStorage.getCookieString()
-
-            val py = getPython()
-            py.getModule("android_entry").callAttr("warm_up", appDir, outDir, cookieString)
+    private val python: Python
+        get() {
+            if (!Python.isStarted()) {
+                Python.start(AndroidPlatform(context))
+            }
+            return Python.getInstance()
         }
+
+    suspend fun warmUp() = withContext(Dispatchers.IO) {
+        val appDir = StorageManager.getAppFileDir().absolutePath
+        val outDir = StorageManager.getPythonDownloadDir()
+        val cookieString = CookieStorage.getCookieString()
+
+        python.getModule(PY_FILE_NAME_DOU_YIN).callAttr("warm_up", appDir, outDir, cookieString)
     }
 
-    suspend fun download(
-        inputText: String, cookieHeader: String, outputDir: File
-    ): PythonDownloadResult = withContext(Dispatchers.IO) {
-        outputDir.mkdirs()
-        val appDataDir = File(context.filesDir, "python-runtime").apply { mkdirs() }
-        val appDir = appDataDir.absolutePath
-        val py = getPython()
-        py.getModule("android_entry")
-            .callAttr("warm_up", appDir, outputDir.absolutePath, cookieHeader)
-        val raw =
-            py.getModule("android_entry").callAttr("download", inputText, cookieHeader).toString()
-
-        PythonDownloadResult.fromJson(raw)
+    suspend fun refreshCookies(cookieString: String) = withContext(Dispatchers.IO) {
+        python.getModule(PY_FILE_NAME_DOU_YIN).callAttr("refresh_cookies", cookieString)
     }
 
-    private fun getPython(): Python {
-        if (!Python.isStarted()) {
-            Python.start(AndroidPlatform(context.applicationContext))
+    suspend fun download(inputText: String): PythonDownloadResult = withContext(Dispatchers.IO) {
+        python.getModule(PY_FILE_NAME_DOU_YIN).callAttr("download", inputText).toString().let {
+            PythonDownloadResult.fromJson(it)
         }
-        return Python.getInstance()
     }
 }
 

@@ -93,11 +93,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         lifecycleScope.launch {
             val taskStartedAt = System.currentTimeMillis()
             try {
-                val result = pythonBridge.download(
-                    inputText = shareText,
-                    cookieHeader = cookieHeader,
-                    outputDir = storageManager.getPythonDownloadDir()
-                )
+                val result = pythonBridge.download(inputText = shareText)
 
                 binding.progressBar.isIndeterminate = false
                 binding.progressBar.progress = 100

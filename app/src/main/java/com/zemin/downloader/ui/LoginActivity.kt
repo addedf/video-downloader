@@ -9,8 +9,11 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
+import androidx.lifecycle.lifecycleScope
 import com.zemin.downloader.core.CookieStorage
+import com.zemin.downloader.core.PythonDownloadBridge
 import com.zemin.downloader.databinding.ActivityLoginBinding
+import kotlinx.coroutines.launch
 
 class LoginActivity : BaseActivity<ActivityLoginBinding>(ActivityLoginBinding::inflate) {
 
@@ -87,7 +90,7 @@ class LoginActivity : BaseActivity<ActivityLoginBinding>(ActivityLoginBinding::i
             loginDone = true
             binding.tvLoginStatus.text = "已登录，Cookie 已保存"
             binding.btnLoginAction.text = "完成"
-            cookieStorage.saveCookies(cookieString)
+            saveCookies(cookieString)
             CookieManager.getInstance().flush()
             if (!loadedIesDouyin) {
                 loadedIesDouyin = true
@@ -104,7 +107,14 @@ class LoginActivity : BaseActivity<ActivityLoginBinding>(ActivityLoginBinding::i
     private fun saveCookiesFromWebView() {
         val cookieString = collectCookies()
         if (cookieString.isNotBlank()) {
-            cookieStorage.saveCookies(cookieString)
+            saveCookies(cookieString)
+        }
+    }
+
+    private fun saveCookies(cookieString: String) {
+        cookieStorage.saveCookies(cookieString)
+        lifecycleScope.launch {
+            PythonDownloadBridge.refreshCookies(cookieString)
         }
     }
 

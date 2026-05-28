@@ -15,11 +15,20 @@ object StorageManager {
     private val context: Context
         get() = DouyinDownloaderApp.appContext
 
+    fun getAppFileDir(): File {
+        return File(context.filesDir, "python-runtime").apply {
+            if (!exists()) mkdirs()
+        }
+    }
+
     fun getPythonDownloadDir(): File {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             File(context.getExternalFilesDir(Environment.DIRECTORY_MOVIES), "Douyin")
         } else {
-            File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), "Douyin")
+            File(
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES),
+                "Douyin"
+            )
         }.apply {
             if (!exists()) mkdirs()
         }
@@ -55,8 +64,7 @@ object StorageManager {
             }
 
             val uri = context.contentResolver.insert(
-                MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-                values
+                MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values
             ) ?: return null
 
             context.contentResolver.openOutputStream(uri)?.use { output ->
@@ -86,8 +94,7 @@ object StorageManager {
             }
 
             val uri = context.contentResolver.insert(
-                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                values
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values
             ) ?: return null
 
             context.contentResolver.openOutputStream(uri)?.use { output ->

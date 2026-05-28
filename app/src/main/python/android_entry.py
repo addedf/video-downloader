@@ -16,8 +16,6 @@ from storage import Database, FileManager
 from utils.cookie_utils import parse_cookie_header, sanitize_cookies
 from utils.validators import is_short_url, normalize_short_url
 
-os.environ.setdefault("PYTHONUTF8", "1")
-
 _android_global_config = AndroidGlobalConfig()
 
 _ANDROID_USE_DATABASE = False
@@ -66,16 +64,20 @@ async def _init_config(app_data_dir: str, output_dir: str, cookie_header: str):
         await database.initialize()
 
 
-def _refresh_cookies(cookie_header: str):
+def refresh_cookies(cookie_header: str):
     if _android_global_config.cookie_manager is None:
         raise RuntimeError("Python runtime is not initialized")
     cookie_manager = _android_global_config.cookie_manager
-    cookie_manager.set_cookies(_parse_cookies(cookie_header))
+    cookies = _parse_cookies(cookie_header)
+    cookie_manager.set_cookies(cookies)
+    if _android_global_config.config_loader is None:
+        raise RuntimeError("Python runtime is not initialized")
+    config_loader = _android_global_config.config_loader
+    config_loader.update(cookies=cookies)
 
 
-def download(input_text: str, cookie_header: str) -> str:
+def download(input_text: str) -> str:
     try:
-        _refresh_cookies(cookie_header)
         result = asyncio.run(_download_async(input_text))
     except Exception as exc:
         result = {
@@ -233,9 +235,9 @@ def _mark_timing(timings: Dict[str, int], name: str, started_perf: float) -> Non
 
 
 def _error(
-    message: str,
-    output_root: Optional[Path] = None,
-    timings: Optional[Dict[str, int]] = None,
+        message: str,
+        output_root: Optional[Path] = None,
+        timings: Optional[Dict[str, int]] = None,
 ) -> Dict[str, Any]:
     return {
         "ok": False,
