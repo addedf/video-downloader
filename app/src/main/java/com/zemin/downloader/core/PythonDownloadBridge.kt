@@ -10,7 +10,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 object PythonDownloadBridge {
-    private const val PY_FILE_NAME_DOU_YIN = "android_entry"
+    private const val PY_FILE_NAME_DOU_YIN = "cli.dy_android_entry"
 
     private val context: Context
         get() = DouyinDownloaderApp.appContext
@@ -25,10 +25,11 @@ object PythonDownloadBridge {
 
     suspend fun warmUp() = withContext(Dispatchers.IO) {
         val appDir = StorageManager.getAppFileDir().absolutePath
-        val outDir = StorageManager.getPythonDownloadDir()
+        val outDir = StorageManager.getPythonDownloadDir().absolutePath
         val cookieString = CookieStorage.getCookieString()
 
-        python.getModule(PY_FILE_NAME_DOU_YIN).callAttr("warm_up", appDir, outDir, cookieString)
+        python.getModule(PY_FILE_NAME_DOU_YIN)
+            .callAttr("warm_up", appDir, outDir, cookieString)
     }
 
     suspend fun refreshCookies(cookieString: String) = withContext(Dispatchers.IO) {
@@ -48,7 +49,6 @@ data class PythonDownloadResult(
     val error: String?,
     val outputDir: String?,
     val files: List<String>,
-    val total: Int,
     val success: Int,
     val failed: Int,
     val skipped: Int,
@@ -82,15 +82,14 @@ data class PythonDownloadResult(
                     val item = metricsJson.optJSONObject(index) ?: continue
                     add(
                         DownloadMetric(
-                            fileName = item.optString("file_name"),
                             ok = item.optBoolean("ok"),
-                            status = item.optInt("status", 0),
+                            host = item.optString("host").takeIf { it.isNotBlank() },
+                            finalHost = item.optString("final_host").takeIf { it.isNotBlank() },
                             bytes = item.optLong("bytes", 0L),
-                            expectedBytes = item.optLong("expected_bytes", 0L),
                             durationMs = item.optInt("duration_ms", 0),
                             firstChunkMs = item.optInt("first_chunk_ms", 0),
-                            speedKbps = item.optInt("speed_kbps", 0),
-                            error = item.optString("error").takeIf { it.isNotBlank() })
+                            speedKbps = item.optInt("speed_kbps", 0)
+                        )
                     )
                 }
             }
@@ -101,9 +100,7 @@ data class PythonDownloadResult(
                     add(
                         ApiMetric(
                             name = item.optString("name"),
-                            ok = item.optBoolean("ok"),
-                            durationMs = item.optInt("duration_ms", 0),
-                            attempts = parseApiAttempts(item.optJSONArray("attempts"))
+                            durationMs = item.optInt("duration_ms", 0)
                         )
                     )
                 }
@@ -115,7 +112,6 @@ data class PythonDownloadResult(
                 error = error,
                 outputDir = json.optString("output_dir"),
                 files = files,
-                total = json.optInt("total", 0),
                 success = json.optInt("success", 0),
                 failed = json.optInt("failed", 0),
                 skipped = json.optInt("skipped", 0),
@@ -124,55 +120,20 @@ data class PythonDownloadResult(
                 apiMetrics = apiMetrics
             )
         }
-
-        private fun parseApiAttempts(jsonArray: JSONArray?): List<ApiAttempt> {
-            if (jsonArray == null) return emptyList()
-            return mutableListOf<ApiAttempt>().apply {
-                for (index in 0 until jsonArray.length()) {
-                    val item = jsonArray.optJSONObject(index) ?: continue
-                    add(
-                        ApiAttempt(
-                            aid = item.optString("aid"),
-                            ok = item.optBoolean("ok"),
-                            durationMs = item.optInt("duration_ms", 0),
-                            tokenMs = item.optInt("token_ms", 0),
-                            signMs = item.optInt("sign_ms", 0),
-                            httpMs = item.optInt("http_ms", 0),
-                            status = item.optInt("status", 0),
-                            error = item.optString("error").takeIf { it.isNotBlank() },
-                            filterReason = item.optString("filter_reason")
-                                .takeIf { it.isNotBlank() })
-                    )
-                }
-            }
-        }
     }
 }
 
 data class ApiMetric(
-    val name: String, val ok: Boolean, val durationMs: Int, val attempts: List<ApiAttempt>
-)
-
-data class ApiAttempt(
-    val aid: String,
-    val ok: Boolean,
-    val durationMs: Int,
-    val tokenMs: Int,
-    val signMs: Int,
-    val httpMs: Int,
-    val status: Int,
-    val error: String?,
-    val filterReason: String?
+    val name: String,
+    val durationMs: Int
 )
 
 data class DownloadMetric(
-    val fileName: String,
     val ok: Boolean,
-    val status: Int,
+    val host: String?,
+    val finalHost: String?,
     val bytes: Long,
-    val expectedBytes: Long,
     val durationMs: Int,
     val firstChunkMs: Int,
-    val speedKbps: Int,
-    val error: String?
+    val speedKbps: Int
 )

@@ -7,7 +7,13 @@ import time
 import traceback
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from cli import AndroidProgressReporter, AndroidGlobalConfig
+from .android_api_diagnostics import (
+    consume_android_metrics,
+    install_android_api_diagnostics,
+    reset_android_metrics,
+)
+from .android_flow_logger import AndroidFlowLogger, new_flow_logger, url_preview
+from .android_progress_reporter import AndroidProgressReporter, AndroidGlobalConfig
 from auth import CookieManager
 from config import ConfigLoader
 from control import QueueManager, RateLimiter, RetryHandler
@@ -25,11 +31,19 @@ _ANDROID_RETRY_TIMES = 2
 
 
 def warm_up(app_data_dir: str, output_dir: str, cookie_header: str) -> str:
+    flow = new_flow_logger()
     try:
-        _prepare_runtime(Path(app_data_dir))
-        asyncio.run(_init_config(app_data_dir, output_dir, cookie_header))
+        flow.info("warm_up.begin", app_data_dir=app_data_dir, output_dir=output_dir)
+        with flow.stage("prepare_runtime"):
+            _prepare_runtime(Path(app_data_dir))
+        with flow.stage("init_config", has_cookie=bool(cookie_header)):
+            asyncio.run(_init_config(app_data_dir, output_dir, cookie_header))
+        flow.mark_total()
+        flow.info("warm_up.done", total_ms=flow.timings.get("total_ms"))
         return json.dumps({"ok": True}, ensure_ascii=False)
     except Exception as exc:
+        flow.mark_total()
+        flow.error("warm_up.failed", total_ms=flow.timings.get("total_ms"), error=str(exc))
         return json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False)
 
 
@@ -41,6 +55,7 @@ def _prepare_runtime(app_root: Path) -> None:
     root = Path(__file__).resolve().parent
     if str(root) not in sys.path:
         sys.path.insert(0, str(root))
+    install_android_api_diagnostics()
 
 
 async def _init_config(app_data_dir: str, output_dir: str, cookie_header: str):
@@ -65,31 +80,40 @@ async def _init_config(app_data_dir: str, output_dir: str, cookie_header: str):
 
 
 def refresh_cookies(cookie_header: str):
+    flow = new_flow_logger()
     if _android_global_config.cookie_manager is None:
-        raise RuntimeError("Python runtime is not initialized")
-    cookie_manager = _android_global_config.cookie_manager
-    cookies = _parse_cookies(cookie_header)
-    cookie_manager.set_cookies(cookies)
+        raise RuntimeError("Python runtime cookie_manager is not initialized")
+    with flow.stage("refresh_cookies", has_cookie=bool(cookie_header)):
+        cookie_manager = _android_global_config.cookie_manager
+        cookies = _parse_cookies(cookie_header)
+        cookie_manager.set_cookies(cookies)
     if _android_global_config.config_loader is None:
-        raise RuntimeError("Python runtime is not initialized")
+        raise RuntimeError("Python runtime config_loader is not initialized")
     config_loader = _android_global_config.config_loader
     config_loader.update(cookies=cookies)
 
 
 def download(input_text: str) -> str:
+    flow = new_flow_logger()
     try:
-        result = asyncio.run(_download_async(input_text))
+        reset_android_metrics()
+        flow.info("download.begin", input=url_preview(input_text))
+        result = asyncio.run(_download_async(input_text, flow))
     except Exception as exc:
+        flow.mark_total()
+        flow.error("download.failed", total_ms=flow.timings.get("total_ms"), error=str(exc))
         result = {
             "ok": False,
             "error": str(exc),
             "traceback": traceback.format_exc(limit=12),
             "files": [],
+            "timings": dict(flow.timings),
+            **consume_android_metrics(),
         }
     return json.dumps(result, ensure_ascii=False)
 
 
-async def _download_async(input_text: str) -> Dict[str, Any]:
+async def _download_async(input_text: str, flow: AndroidFlowLogger) -> Dict[str, Any]:
     started_wall = time.time()
 
     cookie_manager = _android_global_config.cookie_manager
@@ -108,32 +132,52 @@ async def _download_async(input_text: str) -> Dict[str, Any]:
     if not url:
         return _error("请先粘贴抖音分享文本或链接")
 
+    flow.info("download.context", output_dir=output_root, has_cookie=bool(cookies))
     reporter = AndroidProgressReporter()
     try:
-        async with DouyinAPIClient(cookies, proxy=config.get("proxy")) as api_client:
-            resolved_url = await _resolve_input_url(url, api_client)
-            parsed = URLParser.parse(resolved_url)
+        with flow.stage("api_client_create"):
+            api_client_context = DouyinAPIClient(cookies, proxy=config.get("proxy"))
+
+        async with api_client_context as api_client:
+            with flow.stage("resolve_input_url", input=url_preview(url)):
+                resolved_url = await _resolve_input_url(url, api_client, flow)
+            with flow.stage("parse_url", resolved=url_preview(resolved_url)):
+                parsed = URLParser.parse(resolved_url)
             if not parsed:
                 return _error(f"无法识别链接类型: {url}", output_root)
 
-            file_manager = FileManager(str(output_root))
-            downloader = DownloaderFactory.create(
-                parsed["type"],
-                config,
-                api_client,
-                file_manager,
-                cookie_manager,
-                database,
-                RateLimiter(max_per_second=float(config.get("rate_limit", 2) or 2)),
-                RetryHandler(max_retries=int(config.get("retry_times", 3) or 3)),
-                QueueManager(max_workers=int(config.get("thread", 2) or 2)),
-                progress_reporter=reporter,
-            )
+            flow.info("parse_url.result", url_type=parsed.get("type"), aweme_id=parsed.get("aweme_id"))
+            with flow.stage("create_downloader", url_type=parsed.get("type")):
+                file_manager = FileManager(str(output_root))
+                downloader = DownloaderFactory.create(
+                    parsed["type"],
+                    config,
+                    api_client,
+                    file_manager,
+                    cookie_manager,
+                    database,
+                    RateLimiter(max_per_second=float(config.get("rate_limit", 2) or 2)),
+                    RetryHandler(max_retries=int(config.get("retry_times", 3) or 3)),
+                    QueueManager(max_workers=int(config.get("thread", 2) or 2)),
+                    progress_reporter=reporter,
+                )
             if downloader is None:
                 return _error(f"暂不支持的链接类型: {parsed.get('type')}", output_root)
 
-            result = await downloader.download(parsed)
-            files = _changed_files_since(output_root, started_wall)
+            with flow.stage("download_content", url_type=parsed.get("type")):
+                result = await downloader.download(parsed)
+            with flow.stage("collect_files"):
+                files = _changed_files_since(output_root, started_wall)
+            flow.mark_total()
+            flow.info(
+                "download.done",
+                total_ms=flow.timings.get("total_ms"),
+                total=getattr(result, "total", 0),
+                success=getattr(result, "success", 0),
+                failed=getattr(result, "failed", 0),
+                skipped=getattr(result, "skipped", 0),
+                files=len(files),
+            )
             return {
                 "ok": bool(result and result.success > 0),
                 "url": resolved_url,
@@ -144,11 +188,14 @@ async def _download_async(input_text: str) -> Dict[str, Any]:
                 "skipped": int(getattr(result, "skipped", 0) or 0),
                 "output_dir": str(output_root),
                 "files": files,
-                "message": _summary_message(result, files)
+                "message": _summary_message(result, files),
+                "timings": dict(flow.timings),
+                **consume_android_metrics(),
             }
     finally:
         if database is not None:
-            await database.close()
+            with flow.stage("database_close"):
+                await database.close()
 
 
 def _parse_cookies(cookie_header: str) -> Dict[str, str]:
@@ -189,12 +236,22 @@ def _build_config(cookies: Dict[str, str], output_root: Path, app_root: Path) ->
     return config
 
 
-async def _resolve_input_url(input_text: str, api_client: DouyinAPIClient) -> str:
+async def _resolve_input_url(
+        input_text: str,
+        api_client: DouyinAPIClient,
+        flow: Optional[AndroidFlowLogger] = None,
+) -> str:
     explicit_url = _extract_first_url(input_text) or input_text.strip()
     if is_short_url(explicit_url):
+        if flow is not None:
+            flow.info("short_url.detected", url=url_preview(explicit_url))
         resolved = await api_client.resolve_short_url(normalize_short_url(explicit_url))
         if resolved:
+            if flow is not None:
+                flow.info("short_url.resolved", resolved=url_preview(resolved))
             return resolved
+        if flow is not None:
+            flow.warning("short_url.resolve_empty", url=url_preview(explicit_url))
     return explicit_url
 
 
