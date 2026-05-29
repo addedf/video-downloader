@@ -1,8 +1,8 @@
-package com.zemin.downloader.ui
+package com.zemin.downloader.common.base
 
 import android.os.Bundle
-import android.view.View
 import android.view.LayoutInflater
+import android.view.View
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat

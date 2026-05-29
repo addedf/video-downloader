@@ -2,16 +2,14 @@ package com.zemin.downloader
 
 import android.app.Application
 import android.content.Context
-import com.zemin.downloader.core.PythonDownloadBridge
+import com.zemin.downloader.impl.dy.DyDownloadBridge
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-
-val appContext: Context
-    get() = DownloaderApp.instance.applicationContext
+val appContext: Context get() = DownloaderApp.instance.applicationContext
 
 class DownloaderApp : Application() {
 
@@ -29,7 +27,7 @@ class DownloaderApp : Application() {
     private fun warmUpPython() {
         appScope.launch {
             runCatching {
-                PythonDownloadBridge.warmUp()
+                DyDownloadBridge.warmUp()
             }
         }
     }

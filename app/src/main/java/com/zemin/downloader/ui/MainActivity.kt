@@ -11,10 +11,11 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
-import com.zemin.downloader.core.CookieStorage
-import com.zemin.downloader.core.PythonDownloadBridge
-import com.zemin.downloader.core.PythonDownloadResult
-import com.zemin.downloader.core.StorageManager
+import com.zemin.downloader.common.base.BaseActivity
+import com.zemin.downloader.common.bean.PythonDownloadResult
+import com.zemin.downloader.common.util.LocalStorage
+import com.zemin.downloader.impl.dy.DyDownloadBridge
+import com.zemin.downloader.common.util.MediaStorageManager
 import com.zemin.downloader.databinding.ActivityMainBinding
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -23,9 +24,9 @@ import kotlin.math.roundToInt
 
 class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::inflate) {
 
-    private val cookieStorage = CookieStorage
-    private val storageManager = StorageManager
-    private val pythonBridge = PythonDownloadBridge
+    private val cookieStorage = LocalStorage
+    private val storageManager = MediaStorageManager
+    private val pythonBridge = DyDownloadBridge
     private var isDownloading = false
 
     private val loginLauncher = registerForActivityResult(

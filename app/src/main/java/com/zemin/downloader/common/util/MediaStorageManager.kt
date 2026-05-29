@@ -1,7 +1,6 @@
-package com.zemin.downloader.core
+package com.zemin.downloader.common.util
 
 import android.content.ContentValues
-import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -10,24 +9,22 @@ import android.provider.MediaStore
 import com.zemin.downloader.appContext
 import java.io.File
 
-object StorageManager {
-
-    private val context: Context
-        get() = appContext
+object MediaStorageManager {
+    const val MEDIA_DOWNLOAD_DIR = "Download"
 
     fun getAppFileDir(): File {
-        return File(context.filesDir, "python-runtime").apply {
+        return File(appContext.filesDir, "python-runtime").apply {
             if (!exists()) mkdirs()
         }
     }
 
     fun getPythonDownloadDir(): File {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            File(context.cacheDir, "python-downloads")
+            File(appContext.cacheDir, "python-downloads")
         } else {
             File(
                 Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES),
-                "Douyin"
+                MEDIA_DOWNLOAD_DIR
             )
         }.apply {
             if (!exists()) mkdirs()
@@ -101,34 +98,35 @@ object StorageManager {
         }
     }
 
-    private val MEDIA_EXTENSIONS = setOf("mp4", "mov", "m4a", "mp3", "jpg", "jpeg", "png", "webp", "gif")
+    private val MEDIA_EXTENSIONS =
+        setOf("mp4", "mov", "m4a", "mp3", "jpg", "jpeg", "png", "webp", "gif")
 
     private fun registerVideoToMediaStore(file: File, mimeType: String = "video/mp4"): Uri? {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val values = ContentValues().apply {
                 put(MediaStore.Video.Media.DISPLAY_NAME, file.name)
                 put(MediaStore.Video.Media.MIME_TYPE, mimeType)
-                put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/Douyin")
+                put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/$MEDIA_DOWNLOAD_DIR")
                 put(MediaStore.Video.Media.IS_PENDING, 1)
             }
 
-            val uri = context.contentResolver.insert(
+            val uri = appContext.contentResolver.insert(
                 MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values
             ) ?: return null
 
-            context.contentResolver.openOutputStream(uri)?.use { output ->
+            appContext.contentResolver.openOutputStream(uri)?.use { output ->
                 file.inputStream().use { input -> input.copyTo(output) }
             }
 
             values.clear()
             values.put(MediaStore.Video.Media.IS_PENDING, 0)
-            context.contentResolver.update(uri, values, null, null)
+            appContext.contentResolver.update(uri, values, null, null)
             uri
         } else {
             val intent = Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE).apply {
                 data = Uri.fromFile(file)
             }
-            context.sendBroadcast(intent)
+            appContext.sendBroadcast(intent)
             Uri.fromFile(file)
         }
     }
@@ -138,27 +136,27 @@ object StorageManager {
             val values = ContentValues().apply {
                 put(MediaStore.Images.Media.DISPLAY_NAME, file.name)
                 put(MediaStore.Images.Media.MIME_TYPE, mimeType)
-                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/Douyin")
+                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/$MEDIA_DOWNLOAD_DIR")
                 put(MediaStore.Images.Media.IS_PENDING, 1)
             }
 
-            val uri = context.contentResolver.insert(
+            val uri = appContext.contentResolver.insert(
                 MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values
             ) ?: return null
 
-            context.contentResolver.openOutputStream(uri)?.use { output ->
+            appContext.contentResolver.openOutputStream(uri)?.use { output ->
                 file.inputStream().use { input -> input.copyTo(output) }
             }
 
             values.clear()
             values.put(MediaStore.Images.Media.IS_PENDING, 0)
-            context.contentResolver.update(uri, values, null, null)
+            appContext.contentResolver.update(uri, values, null, null)
             uri
         } else {
             val intent = Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE).apply {
                 data = Uri.fromFile(file)
             }
-            context.sendBroadcast(intent)
+            appContext.sendBroadcast(intent)
             Uri.fromFile(file)
         }
     }

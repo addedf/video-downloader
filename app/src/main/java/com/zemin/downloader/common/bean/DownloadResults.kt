@@ -1,57 +1,8 @@
-package com.zemin.downloader.core
+package com.zemin.downloader.common.bean
 
-import android.content.Context
-import com.chaquo.python.Python
-import com.chaquo.python.android.AndroidPlatform
-import com.zemin.downloader.appContext
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import com.zemin.downloader.common.IDownloadResult
 import org.json.JSONArray
 import org.json.JSONObject
-
-object PythonDownloadBridge {
-    private const val PY_FILE_NAME_DOU_YIN = "dy.cli.dy_android_entry"
-    private const val PY_FILE_NAME_XHS = "xhs.cli.xhs_android_entry"
-
-    private val context: Context
-        get() = appContext
-
-    private val python: Python
-        get() {
-            if (!Python.isStarted()) {
-                Python.start(AndroidPlatform(context))
-            }
-            return Python.getInstance()
-        }
-
-    suspend fun warmUp() = withContext(Dispatchers.IO) {
-        val appDir = StorageManager.getAppFileDir().absolutePath
-        val outDir = StorageManager.getPythonDownloadDir().absolutePath
-        val cookieString = CookieStorage.getCookieString()
-
-        // python.getModule(PY_FILE_NAME_DOU_YIN)
-        //     .callAttr("warm_up", appDir, outDir, cookieString)
-        python.getModule(PY_FILE_NAME_XHS)
-            .callAttr("warm_up", appDir, outDir, cookieString)
-    }
-
-    suspend fun refreshCookies(cookieString: String) = withContext(Dispatchers.IO) {
-        // python.getModule(PY_FILE_NAME_DOU_YIN).callAttr("refresh_cookies", cookieString)
-        python.getModule(PY_FILE_NAME_XHS).callAttr("refresh_cookies", cookieString)
-    }
-
-    suspend fun download(inputText: String): PythonDownloadResult = withContext(Dispatchers.IO) {
-        val moduleName = if (isXhsInput(inputText)) PY_FILE_NAME_XHS else PY_FILE_NAME_DOU_YIN
-        python.getModule(moduleName).callAttr("download", inputText).toString().let {
-            PythonDownloadResult.fromJson(it)
-        }
-    }
-
-    private fun isXhsInput(inputText: String): Boolean {
-        return inputText.contains("xiaohongshu.com", ignoreCase = true) ||
-            inputText.contains("xhslink.com", ignoreCase = true)
-    }
-}
 
 data class PythonDownloadResult(
     val ok: Boolean,
@@ -65,7 +16,7 @@ data class PythonDownloadResult(
     val timings: Map<String, Int>,
     val downloadMetrics: List<DownloadMetric>,
     val apiMetrics: List<ApiMetric>
-) {
+) : IDownloadResult {
     companion object {
         fun fromJson(raw: String): PythonDownloadResult {
             val json = JSONObject(raw)
@@ -134,8 +85,7 @@ data class PythonDownloadResult(
 }
 
 data class ApiMetric(
-    val name: String,
-    val durationMs: Int
+    val name: String, val durationMs: Int
 )
 
 data class DownloadMetric(

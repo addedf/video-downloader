@@ -10,8 +10,9 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.lifecycle.lifecycleScope
-import com.zemin.downloader.core.CookieStorage
-import com.zemin.downloader.core.PythonDownloadBridge
+import com.zemin.downloader.common.base.BaseActivity
+import com.zemin.downloader.common.util.LocalStorage
+import com.zemin.downloader.impl.dy.DyDownloadBridge
 import com.zemin.downloader.databinding.ActivityLoginBinding
 import kotlinx.coroutines.launch
 
@@ -32,7 +33,7 @@ class LoginActivity : BaseActivity<ActivityLoginBinding>(ActivityLoginBinding::i
         )
     }
 
-    private val cookieStorage = CookieStorage
+    private val cookieStorage = LocalStorage
     private var loginDone = false
     private var loadedIesDouyin = false
 
@@ -114,7 +115,7 @@ class LoginActivity : BaseActivity<ActivityLoginBinding>(ActivityLoginBinding::i
     private fun saveCookies(cookieString: String) {
         cookieStorage.saveCookies(cookieString)
         lifecycleScope.launch {
-            PythonDownloadBridge.refreshCookies(cookieString)
+            DyDownloadBridge.refreshCookies(cookieString)
         }
     }
 
