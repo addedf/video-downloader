@@ -77,11 +77,11 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
 
     private fun startDownload(shareText: String) {
         val cookieHeader = cookieStorage.getCookieString().orEmpty()
-        if (cookieHeader.isBlank()) {
-            showError("请先登录抖音获取 Cookie")
-            loginLauncher.launch(Intent(this, LoginActivity::class.java))
-            return
-        }
+        // if (cookieHeader.isBlank()) {
+        //     showError("请先登录抖音获取 Cookie")
+        //     loginLauncher.launch(Intent(this, LoginActivity::class.java))
+        //     return
+        // }
 
         isDownloading = true
         setUiEnabled(false)

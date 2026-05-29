@@ -29,14 +29,14 @@ object PythonDownloadBridge {
         val outDir = StorageManager.getPythonDownloadDir().absolutePath
         val cookieString = CookieStorage.getCookieString()
 
-        python.getModule(PY_FILE_NAME_DOU_YIN)
-            .callAttr("warm_up", appDir, outDir, cookieString)
+        // python.getModule(PY_FILE_NAME_DOU_YIN)
+        //     .callAttr("warm_up", appDir, outDir, cookieString)
         python.getModule(PY_FILE_NAME_XHS)
             .callAttr("warm_up", appDir, outDir, cookieString)
     }
 
     suspend fun refreshCookies(cookieString: String) = withContext(Dispatchers.IO) {
-        python.getModule(PY_FILE_NAME_DOU_YIN).callAttr("refresh_cookies", cookieString)
+        // python.getModule(PY_FILE_NAME_DOU_YIN).callAttr("refresh_cookies", cookieString)
         python.getModule(PY_FILE_NAME_XHS).callAttr("refresh_cookies", cookieString)
     }
 

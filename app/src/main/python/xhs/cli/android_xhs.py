@@ -11,12 +11,13 @@ from .source_bootstrap import install_module_exports
 
 install_module_exports()
 
+from .android_xhs_util import AndroidConverter, Print
 from source.application.download import Download
 from source.application.explore import Explore
 from source.application.image import Image
 from source.application.request import Html
 from source.application.video import Video
-from source.expansion import Cleaner, Converter, Namespace, beautify_string
+from source.expansion import Cleaner, Namespace, beautify_string
 from source.module import (
     DataRecorder,
     ERROR,
@@ -46,14 +47,6 @@ def data_cache(function):
     return inner
 
 
-class Print:
-    def __init__(self, func=print):
-        self.func = func
-
-    def __call__(self):
-        return self.func
-
-
 class AndroidXHS:
     LINK = compile(r"(?:https?://)?www\.xiaohongshu\.com/explore/\S+")
     USER = compile(r"(?:https?://)?www\.xiaohongshu\.com/user/profile/[a-z0-9]+/\S+")
@@ -64,29 +57,29 @@ class AndroidXHS:
     CLEANER = Cleaner()
 
     def __init__(
-        self,
-        mapping_data: dict | None = None,
-        work_path: str = "",
-        folder_name: str = "XHS",
-        name_format: str = "发布时间 作者昵称 作品标题",
-        user_agent: str | None = None,
-        cookie: str = "",
-        proxy: str | dict | None = None,
-        timeout: int = 10,
-        chunk: int = 1024 * 1024,
-        max_retry: int = 3,
-        record_data: bool = False,
-        image_format: str = "JPEG",
-        image_download: bool = True,
-        video_download: bool = True,
-        live_download: bool = False,
-        video_preference: str = "resolution",
-        folder_mode: bool = False,
-        download_record: bool = True,
-        author_archive: bool = False,
-        write_mtime: bool = False,
-        language: str = "zh_CN",
-        root: Path | None = None,
+            self,
+            mapping_data: dict | None = None,
+            work_path: str = "",
+            folder_name: str = "XHS",
+            name_format: str = "发布时间 作者昵称 作品标题",
+            user_agent: str | None = None,
+            cookie: str = "",
+            proxy: str | dict | None = None,
+            timeout: int = 10,
+            chunk: int = 1024 * 1024,
+            max_retry: int = 3,
+            record_data: bool = False,
+            image_format: str = "JPEG",
+            image_download: bool = True,
+            video_download: bool = True,
+            live_download: bool = False,
+            video_preference: str = "resolution",
+            folder_mode: bool = False,
+            download_record: bool = True,
+            author_archive: bool = False,
+            write_mtime: bool = False,
+            language: str = "zh_CN",
+            root: Path | None = None,
     ):
         switch_language(language)
         self.print = Print()
@@ -122,7 +115,7 @@ class AndroidXHS:
         self.image = Image()
         self.video = Video()
         self.explore = Explore()
-        self.convert = Converter()
+        self.convert = AndroidConverter()
         self.download = Download(self.manager)
         self.id_recorder = IDRecorder(self.manager)
         self.data_recorder = DataRecorder(self.manager)
@@ -142,11 +135,11 @@ class AndroidXHS:
         container["动图地址"] = [None]
 
     async def __download_files(
-        self,
-        container: dict,
-        download: bool,
-        index,
-        count: SimpleNamespace,
+            self,
+            container: dict,
+            download: bool,
+            index,
+            count: SimpleNamespace,
     ):
         name = self.__naming_rules(container)
         if (urls := container["下载地址"]) and download:
@@ -187,11 +180,11 @@ class AndroidXHS:
         await self.id_recorder.add(id_)
 
     async def extract(
-        self,
-        url: str,
-        download: bool = False,
-        index: list | tuple | None = None,
-        data: bool = True,
+            self,
+            url: str,
+            download: bool = False,
+            index: list | tuple | None = None,
+            data: bool = True,
     ) -> list[dict]:
         if not (urls := await self.extract_links(url)):
             self.logging(_("提取小红书作品链接失败"), WARNING)
@@ -216,12 +209,12 @@ class AndroidXHS:
         return urls
 
     async def _get_html_data(
-        self,
-        url: str,
-        data: bool,
-        cookie: str | None = None,
-        proxy: str | None = None,
-        count=SimpleNamespace(all=0, success=0, fail=0, skip=0),
+            self,
+            url: str,
+            data: bool,
+            cookie: str | None = None,
+            proxy: str | None = None,
+            count=SimpleNamespace(all=0, success=0, fail=0, skip=0),
     ) -> tuple[str, Namespace | dict]:
         if await self.skip_download(id_ := self.__extract_link_id(url)) and not data:
             count.skip += 1
@@ -243,13 +236,13 @@ class AndroidXHS:
         return data
 
     async def _deal_download_tasks(
-        self,
-        data: dict,
-        namespace: Namespace,
-        id_: str,
-        download: bool,
-        index: list | tuple | None,
-        count: SimpleNamespace,
+            self,
+            data: dict,
+            namespace: Namespace,
+            id_: str,
+            download: bool,
+            index: list | tuple | None,
+            count: SimpleNamespace,
     ):
         if data["作品类型"] == _("视频"):
             self.__extract_video(data, namespace)
@@ -264,14 +257,14 @@ class AndroidXHS:
         return data
 
     async def __deal_extract(
-        self,
-        url: str,
-        download: bool,
-        index: list | tuple | None,
-        data: bool,
-        cookie: str | None = None,
-        proxy: str | None = None,
-        count=SimpleNamespace(all=0, success=0, fail=0, skip=0),
+            self,
+            url: str,
+            download: bool,
+            index: list | tuple | None,
+            data: bool,
+            cookie: str | None = None,
+            proxy: str | None = None,
+            count=SimpleNamespace(all=0, success=0, fail=0, skip=0),
     ):
         id_, namespace = await self._get_html_data(url, data, cookie, proxy, count)
         if not isinstance(namespace, Namespace):
