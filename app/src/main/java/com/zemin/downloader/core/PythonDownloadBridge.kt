@@ -11,6 +11,7 @@ import org.json.JSONObject
 
 object PythonDownloadBridge {
     private const val PY_FILE_NAME_DOU_YIN = "dy.cli.dy_android_entry"
+    private const val PY_FILE_NAME_XHS = "xhs.cli.xhs_android_entry"
 
     private val context: Context
         get() = appContext
@@ -30,16 +31,25 @@ object PythonDownloadBridge {
 
         python.getModule(PY_FILE_NAME_DOU_YIN)
             .callAttr("warm_up", appDir, outDir, cookieString)
+        python.getModule(PY_FILE_NAME_XHS)
+            .callAttr("warm_up", appDir, outDir, cookieString)
     }
 
     suspend fun refreshCookies(cookieString: String) = withContext(Dispatchers.IO) {
         python.getModule(PY_FILE_NAME_DOU_YIN).callAttr("refresh_cookies", cookieString)
+        python.getModule(PY_FILE_NAME_XHS).callAttr("refresh_cookies", cookieString)
     }
 
     suspend fun download(inputText: String): PythonDownloadResult = withContext(Dispatchers.IO) {
-        python.getModule(PY_FILE_NAME_DOU_YIN).callAttr("download", inputText).toString().let {
+        val moduleName = if (isXhsInput(inputText)) PY_FILE_NAME_XHS else PY_FILE_NAME_DOU_YIN
+        python.getModule(moduleName).callAttr("download", inputText).toString().let {
             PythonDownloadResult.fromJson(it)
         }
+    }
+
+    private fun isXhsInput(inputText: String): Boolean {
+        return inputText.contains("xiaohongshu.com", ignoreCase = true) ||
+            inputText.contains("xhslink.com", ignoreCase = true)
     }
 }
 

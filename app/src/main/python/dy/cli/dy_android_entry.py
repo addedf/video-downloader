@@ -1,10 +1,15 @@
 import asyncio
 import json
 import re
+import sys
 import time
 import traceback
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+_DY_ROOT = Path(__file__).resolve().parents[1]
+if str(_DY_ROOT) not in sys.path:
+    sys.path.insert(0, str(_DY_ROOT))
 
 from .android_api_diagnostics import (
     consume_android_metrics,

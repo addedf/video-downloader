@@ -21,7 +21,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {
-            abiFilters += listOf("arm64-v8a", "x86_64")
+            abiFilters += listOf("arm64-v8a")
         }
     }
 
@@ -76,7 +76,7 @@ dependencies {
 
 chaquopy {
     defaultConfig {
-        version = "3.10"
+        version = "3.12"
         providers.gradleProperty("chaquopy.buildPython").orNull?.let { buildPython(it) }
         pip {
             install("aiohttp>=3.9.0")
@@ -85,6 +85,10 @@ chaquopy {
             install("pyyaml>=6.0.1")
             install("python-dateutil>=2.8.2")
             install("gmssl>=3.2.2")
+            install("httpx[http2]>=0.28.1")
+            install("lxml==5.3.0")
+            install("emoji>=2.15.0")
+            install("rich>=14.0.0")
         }
     }
 }
