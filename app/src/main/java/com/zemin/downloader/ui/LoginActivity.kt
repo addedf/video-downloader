@@ -1,5 +1,6 @@
 package com.zemin.downloader.ui
 
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.graphics.Bitmap
 import android.os.Bundle
@@ -9,34 +10,14 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
-import androidx.lifecycle.lifecycleScope
 import com.zemin.downloader.common.base.BaseActivity
-import com.zemin.downloader.common.util.LocalStorage
-import com.zemin.downloader.impl.dy.DyDownloadBridge
+import com.zemin.downloader.common.core.LoginModule
 import com.zemin.downloader.databinding.ActivityLoginBinding
-import kotlinx.coroutines.launch
 
 class LoginActivity : BaseActivity<ActivityLoginBinding>(ActivityLoginBinding::inflate) {
-
-    private companion object {
-        private const val DEFAULT_USER_AGENT =
-            "Mozilla/5.0 (Linux; Android 15; Pixel 9 Pro) AppleWebKit/537.36 " +
-                "(KHTML, like Gecko) Chrome/131.0.6778.135 Mobile Safari/537.36"
-        private const val LOGIN_URL = "https://sso.douyin.com/login/?service=https://www.douyin.com&type=phone"
-        private const val IES_DOUYIN_URL = "https://www.iesdouyin.com/"
-        private val COOKIE_URLS = listOf(
-            "https://douyin.com",
-            "https://www.douyin.com",
-            "https://sso.douyin.com",
-            "https://login.douyin.com",
-            IES_DOUYIN_URL
-        )
-    }
-
-    private val cookieStorage = LocalStorage
     private var loginDone = false
-    private var loadedIesDouyin = false
 
+    @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         supportActionBar?.hide()
@@ -52,7 +33,7 @@ class LoginActivity : BaseActivity<ActivityLoginBinding>(ActivityLoginBinding::i
             settings.loadWithOverviewMode = true
             settings.cacheMode = WebSettings.LOAD_DEFAULT
             settings.javaScriptCanOpenWindowsAutomatically = true
-            settings.userAgentString = DEFAULT_USER_AGENT
+            settings.userAgentString = LoginModule.userAgent
             CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
 
             webViewClient = object : WebViewClient() {
@@ -67,11 +48,10 @@ class LoginActivity : BaseActivity<ActivityLoginBinding>(ActivityLoginBinding::i
                 }
 
                 override fun shouldOverrideUrlLoading(
-                    view: WebView?,
-                    request: WebResourceRequest?
+                    view: WebView?, request: WebResourceRequest?
                 ): Boolean {
                     val url = request?.url?.toString() ?: return false
-                    return url.startsWith("snssdk")
+                    return LoginModule.shouldOverrideUrlLoading(url, view, request)
                 }
             }
         }
@@ -81,42 +61,21 @@ class LoginActivity : BaseActivity<ActivityLoginBinding>(ActivityLoginBinding::i
                 finishLogin()
             }
         }
-
-        binding.webView.loadUrl(LOGIN_URL)
+        binding.webView.loadUrl(LoginModule.loginUrl)
     }
 
     private fun checkLoginStatus(view: WebView? = null) {
-        val cookieString = collectCookies()
-        if (cookieString.isNotBlank() && isLoggedIn(cookieString)) {
+        val hasLogin = LoginModule.checkLoginStatus(view)
+        if (hasLogin) {
             loginDone = true
             binding.tvLoginStatus.text = "已登录，Cookie 已保存"
             binding.btnLoginAction.text = "完成"
-            saveCookies(cookieString)
             CookieManager.getInstance().flush()
-            if (!loadedIesDouyin) {
-                loadedIesDouyin = true
-                view?.loadUrl(IES_DOUYIN_URL)
-            }
         }
-    }
-
-    private fun isLoggedIn(cookieString: String): Boolean {
-        return cookieString.contains("sessionid") ||
-            cookieString.contains("sso_uid_tt")
     }
 
     private fun saveCookiesFromWebView() {
-        val cookieString = collectCookies()
-        if (cookieString.isNotBlank()) {
-            saveCookies(cookieString)
-        }
-    }
-
-    private fun saveCookies(cookieString: String) {
-        cookieStorage.saveCookies(cookieString)
-        lifecycleScope.launch {
-            DyDownloadBridge.refreshCookies(cookieString)
-        }
+        LoginModule.saveCookiesFromWebView()
     }
 
     private fun finishLogin() {
@@ -127,13 +86,5 @@ class LoginActivity : BaseActivity<ActivityLoginBinding>(ActivityLoginBinding::i
             Toast.makeText(this, "登录成功，Cookie 已保存", Toast.LENGTH_SHORT).show()
         }
         finish()
-    }
-
-    private fun collectCookies(): String {
-        return COOKIE_URLS
-            .mapNotNull { CookieManager.getInstance().getCookie(it) }
-            .filter { it.isNotBlank() }
-            .distinct()
-            .joinToString("; ")
     }
 }

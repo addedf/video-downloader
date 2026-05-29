@@ -4,8 +4,14 @@ package com.zemin.downloader.common
  * @author maozemin@coocaa.com
  * @desc:
  */
-interface IBridgeAbility {
+interface IBridgeAbility : IBaseModule {
+    var initialized: Boolean
+
     val loginModule: ILoginModule
 
-    val downloadBridge: IDownloadBridge
+    val storeModule: IStoreModule
+
+    val downloadModule: IDownloadModule
+
+    suspend fun init(): Boolean
 }

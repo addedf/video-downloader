@@ -1,4 +1,7 @@
 <resources>
     <string name="app_name">抖音下载器</string>
     <string name="share_target_name">保存到抖音下载器</string>
+
+    <string name="name_dou_yin">抖音</string>
+    <string name="name_xhs">小红书</string>
 </resources>

@@ -9,11 +9,7 @@ import com.zemin.downloader.impl.DownloadType
  * @author maozemin@coocaa.com
  * @desc: 通用下载桥接接口
  */
-interface IDownloadResult
-
-interface IDownloadBridge {
-    val type: DownloadType
-
+interface IDownloadModule : IBaseBusinessModule {
     val python: Python
 
     val pyModuleName: String

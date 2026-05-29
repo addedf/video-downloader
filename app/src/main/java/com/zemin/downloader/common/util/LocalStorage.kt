@@ -7,7 +7,7 @@ import com.zemin.downloader.appContext
 import com.zemin.downloader.impl.DownloadType
 
 object LocalStorage {
-    private const val KEY_ABILITY = "current_ability"
+    const val KEY_ABILITY = "current_ability"
 
     private val prefs: SharedPreferences by lazy {
         PreferenceManager.getDefaultSharedPreferences(

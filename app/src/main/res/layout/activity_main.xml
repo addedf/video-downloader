@@ -29,6 +29,7 @@
                 android:orientation="vertical">
 
                 <TextView
+                    android:id="@+id/accountDesc"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="抖音账号"
@@ -89,7 +90,7 @@
                 android:layout_marginTop="12dp"
                 android:background="@drawable/bg_share_input"
                 android:gravity="top|start"
-                android:hint="粘贴抖音分享文本，支持 https://v.douyin.com/ 短链或作品链接"
+                android:hint="粘贴分享文本，支持短链或作品链接"
                 android:inputType="textMultiLine"
                 android:maxLines="6"
                 android:minLines="4"

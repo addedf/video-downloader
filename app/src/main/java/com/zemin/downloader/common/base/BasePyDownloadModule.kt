@@ -1,9 +1,10 @@
 package com.zemin.downloader.common.base
 
+import androidx.annotation.WorkerThread
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
 import com.zemin.downloader.appContext
-import com.zemin.downloader.common.IDownloadBridge
+import com.zemin.downloader.common.IDownloadModule
 import com.zemin.downloader.common.IDownloadResult
 import com.zemin.downloader.common.PyBridgeConfig
 import com.zemin.downloader.common.util.LocalStorage
@@ -18,7 +19,7 @@ const val KEY_WARM_UP = "warm_up"
 const val KEY_REFRESH_COOKIES = "refresh_cookies"
 const val KEY_DOWNLOAD = "download"
 
-abstract class BasePyDownloadBridge : IDownloadBridge {
+abstract class BasePyDownloadModule : IDownloadModule {
     override val python: Python
         get() {
             if (!Python.isStarted()) {
@@ -29,9 +30,14 @@ abstract class BasePyDownloadBridge : IDownloadBridge {
 
     override val pyBridgeConfig: PyBridgeConfig
         get() = PyBridgeConfig(
-            cookieString = LocalStorage.getCookieString(type.name)
+            cookieString = LocalStorage.getCookieString(downloadType.name)
         )
 
+    /**
+     * 处理下载结果
+     */
+    @WorkerThread
+    abstract suspend fun handleDownloadResult(result: String): IDownloadResult
 
     override suspend fun warmUp() = withContext(Dispatchers.IO) {
         python.getModule(pyModuleName).callAttr(
@@ -52,8 +58,6 @@ abstract class BasePyDownloadBridge : IDownloadBridge {
                 handleDownloadResult(it)
             }
         }
-
-    abstract suspend fun handleDownloadResult(result: String): IDownloadResult
 }
 
 

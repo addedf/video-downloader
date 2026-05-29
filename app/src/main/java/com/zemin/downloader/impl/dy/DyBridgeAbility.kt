@@ -1,13 +1,18 @@
 package com.zemin.downloader.impl.dy
 
-import com.zemin.downloader.common.IBridgeAbility
+import com.zemin.downloader.common.base.BaseBridgeAbility
+import com.zemin.downloader.impl.DownloadType
 
 /**
  * @author maozemin@coocaa.com
  * @desc:
  */
-class DyBridgeAbility : IBridgeAbility {
+class DyBridgeAbility : BaseBridgeAbility() {
+    override val downloadType: DownloadType = DownloadType.DOU_YIN
+
     override val loginModule = DyLoginModule()
 
-    override val downloadBridge = DyDownloadBridge()
+    override val storeModule = DyStoreModule()
+
+    override val downloadModule = DyDownloadModule()
 }
