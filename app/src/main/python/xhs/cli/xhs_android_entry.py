@@ -1,11 +1,13 @@
 import asyncio
 import json
 import os
+import re
 import sys
 import time
 import traceback
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
 from .android_xhs import AndroidXHS
 from .android_flow_logger import AndroidFlowLogger, url_preview
@@ -26,6 +28,7 @@ _MEDIA_SUFFIXES = {
     ".png",
     ".webp",
 }
+_SHORT_URL_CACHE: Dict[str, str] = {}
 
 
 def warm_up(app_data_dir: str, output_dir: str, cookie_header: str) -> str:
@@ -112,6 +115,7 @@ async def _download_async(input_text: str, flow: AndroidFlowLogger) -> Dict[str,
             author_archive=False,
             folder_mode=False,
             flow=flow,
+            short_url_cache=_SHORT_URL_CACHE,
         ) as xhs:
             items = await xhs.extract(input_text, download=True, data=True)
 
@@ -122,14 +126,21 @@ async def _download_async(input_text: str, flow: AndroidFlowLogger) -> Dict[str,
     ok_count = sum(1 for item in items if isinstance(item, dict) and item.get("下载地址"))
     failed = 0 if ok_count else 1
     success_count = len(files) or ok_count
+    timings = _normalize_timings(flow.timings)
+    download_metrics = _build_download_metrics(files, items, timings)
+    api_metrics = _build_api_metrics(timings)
+    _normalize_download_stage_timing(timings, api_metrics, download_metrics)
     flow.mark_total()
+    timings["total_ms"] = flow.timings.get("total_ms", 0)
     flow.info(
         "download.done",
-        total_ms=flow.timings.get("total_ms"),
+        total_ms=timings.get("total_ms"),
         items=len(items),
         success=success_count,
         failed=failed,
         files=len(files),
+        bytes=sum(item.get("bytes", 0) for item in download_metrics),
+        speed_kbps=download_metrics[0].get("speed_kbps") if download_metrics else 0,
     )
     return {
         "ok": bool(files or ok_count),
@@ -140,9 +151,9 @@ async def _download_async(input_text: str, flow: AndroidFlowLogger) -> Dict[str,
         "success": success_count,
         "failed": failed,
         "skipped": 0,
-        "timings": dict(flow.timings),
-        "download_metrics": [],
-        "api_metrics": [],
+        "timings": timings,
+        "download_metrics": download_metrics,
+        "api_metrics": api_metrics,
         "items": items,
     }
 
@@ -162,6 +173,102 @@ def _changed_files_since(root: Path, started_at: float) -> tuple[List[str], List
         except OSError:
             pass
     return sorted(changed), sorted(ignored)
+
+
+def _normalize_timings(source: Dict[str, int]) -> Dict[str, int]:
+    timings = dict(source)
+    resolve_ms = timings.get("resolve_short_url_ms", 0)
+    extract_links_ms = timings.get("extract_links_ms", 0)
+    timings.setdefault("resolve_input_url_ms", resolve_ms)
+    timings.setdefault("parse_url_ms", max(0, extract_links_ms - resolve_ms))
+    return timings
+
+
+def _normalize_download_stage_timing(
+    timings: Dict[str, int],
+    api_metrics: List[Dict[str, Any]],
+    download_metrics: List[Dict[str, Any]],
+) -> None:
+    timings["xhs_flow_ms"] = timings.get("download_content_ms", 0)
+    timings["download_content_ms"] = _sum_metric_duration(api_metrics) + _sum_metric_duration(download_metrics)
+
+
+def _build_api_metrics(timings: Dict[str, int]) -> List[Dict[str, Any]]:
+    detail_ms = sum(
+        timings.get(name, 0)
+        for name in (
+            "request_note_html_ms",
+            "parse_note_data_ms",
+            "extract_note_fields_ms",
+            "extract_video_urls_ms",
+            "extract_image_urls_ms",
+        )
+    )
+    return [{"name": "get_video_detail", "duration_ms": detail_ms}] if detail_ms > 0 else []
+
+
+def _build_download_metrics(
+    files: List[str],
+    items: List[Any],
+    timings: Dict[str, int],
+) -> List[Dict[str, Any]]:
+    bytes_total = _sum_file_bytes(files)
+    if bytes_total <= 0:
+        return []
+
+    duration_ms = max(1, timings.get("download_files_ms", 0))
+    speed_kbps = int((bytes_total / 1024) / (duration_ms / 1000))
+    host = _first_media_host(items)
+    return [
+        {
+            "ok": True,
+            "host": host,
+            "final_host": host,
+            "bytes": bytes_total,
+            "duration_ms": duration_ms,
+            "first_chunk_ms": 0,
+            "speed_kbps": speed_kbps,
+        }
+    ]
+
+
+def _sum_metric_duration(metrics: List[Dict[str, Any]]) -> int:
+    return sum(int(item.get("duration_ms") or 0) for item in metrics)
+
+
+def _sum_file_bytes(files: List[str]) -> int:
+    total = 0
+    for file in files:
+        try:
+            total += Path(file).stat().st_size
+        except OSError:
+            pass
+    return total
+
+
+def _first_media_host(items: List[Any]) -> Optional[str]:
+    fallback: Optional[str] = None
+    for item in items:
+        for url in _iter_urls(item):
+            host = urlparse(url).hostname
+            if not host:
+                continue
+            if host.endswith("xiaohongshu.com") or host.endswith("xhslink.com"):
+                fallback = fallback or host
+                continue
+            return host
+    return fallback
+
+
+def _iter_urls(value: Any):
+    if isinstance(value, str):
+        yield from re.findall(r"https?://[^\s\"'<>]+", value)
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from _iter_urls(item)
+    elif isinstance(value, (list, tuple, set)):
+        for item in value:
+            yield from _iter_urls(item)
 
 
 def _summary_message(files: List[str], ok_count: int) -> str:

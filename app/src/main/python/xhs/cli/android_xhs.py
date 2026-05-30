@@ -7,6 +7,8 @@ from re import compile
 from types import SimpleNamespace
 from urllib.parse import urlparse
 
+from httpx import HTTPError
+
 from .android_flow_logger import AndroidFlowLogger, url_preview
 from .source_bootstrap import install_module_exports
 
@@ -36,6 +38,60 @@ from source.translation import _, switch_language
 __all__ = ["AndroidXHS"]
 
 
+class AndroidHtml(Html):
+    DEFAULT_SCHEME = "https://"
+    MIN_REQUEST_ATTEMPTS = 1
+
+    async def request_url(
+            self,
+            url: str,
+            content=True,
+            cookie: str = None,
+            proxy: str = None,
+            **kwargs,
+    ) -> str:
+        result = ""
+        for attempt in self._request_attempts():
+            result = await self._request_url_once(
+                url,
+                content,
+                cookie,
+                log_error=attempt >= self.retry,
+                **kwargs,
+            )
+            if result:
+                return result
+        return result
+
+    def _request_attempts(self) -> range:
+        return range(max(self.MIN_REQUEST_ATTEMPTS, self.retry + 1))
+
+    async def _request_url_once(
+            self,
+            url: str,
+            content: bool,
+            cookie: str | None,
+            log_error: bool,
+            **kwargs,
+    ) -> str:
+        url = self._normalize_url(url)
+        try:
+            response = await self.client.get(
+                url,
+                headers=self.update_cookie(cookie),
+                **kwargs,
+            )
+            response.raise_for_status()
+            return response.text if content else str(response.url)
+        except HTTPError as error:
+            if log_error:
+                logging(self.print, f"request failed: {url} {error!r}", ERROR)
+            return ""
+
+    def _normalize_url(self, url: str) -> str:
+        return url if url.startswith("http") else f"{self.DEFAULT_SCHEME}{url}"
+
+
 def data_cache(function):
     async def inner(self, data: dict):
         if self.manager.record_data:
@@ -56,6 +112,9 @@ class AndroidXHS:
     ID = compile(r"(?:explore|item)/(\S+)?\?")
     ID_USER = compile(r"user/profile/[a-z0-9]+/(\S+)?\?")
     CLEANER = Cleaner()
+    SHORT_URL_CACHE_LIMIT = 64
+    SHORT_URL_HEAD_TIMEOUT_SECONDS = 3.0
+    DEFAULT_SCHEME = "https://"
 
     def __init__(
             self,
@@ -82,9 +141,11 @@ class AndroidXHS:
             language: str = "zh_CN",
             root: Path | None = None,
             flow: AndroidFlowLogger | None = None,
+            short_url_cache: dict[str, str] | None = None,
     ):
         switch_language(language)
         self.flow = flow
+        self.short_url_cache = short_url_cache if short_url_cache is not None else {}
         self.print = Print()
         self.manager = Manager(
             root or ROOT,
@@ -114,7 +175,7 @@ class AndroidXHS:
         self.mapping_data = mapping_data or {}
         self.map_recorder = MapRecorder(self.manager)
         self.mapping = Mapping(self.manager, self.map_recorder)
-        self.html = Html(self.manager)
+        self.html = AndroidHtml(self.manager)
         self.image = Image()
         self.video = Video()
         self.explore = Explore()
@@ -230,16 +291,18 @@ class AndroidXHS:
         return items
 
     async def extract_links(self, url: str) -> list[str]:
+        items = str(url or "").split()
+        urls = self._extract_direct_links(items)
+        if urls:
+            if self.flow is not None:
+                self.flow.info("extract_links.direct_hit", count=len(urls))
+            return urls
+
         urls = []
-        for item in str(url or "").split():
+        for item in items:
             if short := self.SHORT.search(item):
                 short_url = short.group()
-                if self.flow is not None:
-                    self.flow.info("short_url.detected", url=url_preview(short_url))
-                with self._stage("resolve_short_url", url=url_preview(short_url)):
-                    item = await self.html.request_url(short_url, False)
-                if self.flow is not None:
-                    self.flow.info("short_url.resolved", resolved=url_preview(item))
+                item = await self._resolve_short_url(short_url)
             if share := self.SHARE.search(item):
                 urls.append(share.group())
             elif link := self.LINK.search(item):
@@ -247,6 +310,62 @@ class AndroidXHS:
             elif user := self.USER.search(item):
                 urls.append(user.group())
         return urls
+
+    def _extract_direct_links(self, items: list[str]) -> list[str]:
+        urls = []
+        for item in items:
+            if share := self.SHARE.search(item):
+                urls.append(share.group())
+            elif link := self.LINK.search(item):
+                urls.append(link.group())
+            elif user := self.USER.search(item):
+                urls.append(user.group())
+        return urls
+
+    async def _resolve_short_url(self, short_url: str) -> str:
+        if cached := self.short_url_cache.get(short_url):
+            if self.flow is not None:
+                self.flow.info(
+                    "short_url.cache_hit",
+                    url=url_preview(short_url),
+                    resolved=url_preview(cached),
+                )
+            return cached
+
+        if self.flow is not None:
+            self.flow.info("short_url.detected", url=url_preview(short_url))
+        with self._stage("resolve_short_url", url=url_preview(short_url)):
+            resolved = await self._resolve_short_url_by_head(short_url)
+            if not resolved:
+                resolved = await self.html.request_url(short_url, False)
+
+        if resolved:
+            if len(self.short_url_cache) >= self.SHORT_URL_CACHE_LIMIT:
+                self.short_url_cache.clear()
+            self.short_url_cache[short_url] = resolved
+        if self.flow is not None:
+            self.flow.info("short_url.resolved", resolved=url_preview(resolved))
+        return resolved
+
+    async def _resolve_short_url_by_head(self, short_url: str) -> str:
+        request_url = short_url if short_url.startswith("http") else f"{self.DEFAULT_SCHEME}{short_url}"
+        try:
+            response = await self.html.client.head(
+                request_url,
+                headers=self.html.update_cookie(),
+                timeout=self.SHORT_URL_HEAD_TIMEOUT_SECONDS,
+            )
+            response.raise_for_status()
+            resolved = str(response.url)
+            if self.SHORT.search(resolved):
+                return ""
+            if self.flow is not None:
+                self.flow.info("short_url.head_resolved", resolved=url_preview(resolved))
+            return resolved
+        except Exception as exc:
+            if self.flow is not None:
+                self.flow.info("short_url.head_fallback", error=repr(exc), url=url_preview(short_url))
+            return ""
 
     async def _get_html_data(
             self,

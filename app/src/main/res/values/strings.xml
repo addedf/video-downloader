@@ -15,7 +15,7 @@
     <string name="main_button_clear">清除链接</string>
     <string name="main_button_download">解析并下载</string>
     <string name="main_status_waiting_input">等待输入</string>
-    <string name="main_status_downloading">核心正在解析和下载...</string>
+    <string name="main_status_downloading">正在解析和下载</string>
     <string name="main_status_download_done">下载完成</string>
     <string name="main_status_error">出错了</string>
     <string name="main_status_link_cleared">已清空链接</string>
