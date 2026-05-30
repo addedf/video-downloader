@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="update_button_min_width">96dp</dimen>
+    <dimen name="update_button_min_height">42dp</dimen>
+    <dimen name="update_button_horizontal_padding">14dp</dimen>
+    <dimen name="update_button_corner_radius">8dp</dimen>
+    <dimen name="update_button_stroke_width">1dp</dimen>
+    <dimen name="update_button_gap">8dp</dimen>
+    <dimen name="update_button_text_size">15sp</dimen>
+    <dimen name="update_dialog_corner_radius">12dp</dimen>
+    <dimen name="update_dialog_width">312dp</dimen>
+    <dimen name="update_dialog_horizontal_padding">24dp</dimen>
+    <dimen name="update_dialog_top_padding">24dp</dimen>
+    <dimen name="update_dialog_bottom_padding">18dp</dimen>
+    <dimen name="update_dialog_title_text_size">20sp</dimen>
+    <dimen name="update_dialog_body_text_size">16sp</dimen>
+    <dimen name="update_dialog_version_top_margin">16dp</dimen>
+    <dimen name="update_dialog_content_top_margin">22dp</dimen>
+    <dimen name="update_dialog_content_line_spacing">2dp</dimen>
+    <dimen name="update_dialog_button_top_margin">24dp</dimen>
+</resources>

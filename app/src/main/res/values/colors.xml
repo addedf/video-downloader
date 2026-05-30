@@ -10,6 +10,15 @@
     <color name="dy_surface_strong">#EEF1F4</color>
     <color name="dy_stroke">#DDE2E8</color>
     <color name="dy_text_muted">#69707A</color>
+    <color name="update_dialog_background">#FFFFFFFF</color>
+    <color name="update_dialog_title">#17181D</color>
+    <color name="update_dialog_text">#24262D</color>
+    <color name="update_button_primary">#121217</color>
+    <color name="update_button_primary_pressed">#24242C</color>
+    <color name="update_button_secondary">#F7F8FA</color>
+    <color name="update_button_secondary_pressed">#EEF1F4</color>
+    <color name="update_button_secondary_stroke">#DDE2E8</color>
+    <color name="update_button_secondary_text">#121217</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
 </resources>

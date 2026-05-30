@@ -24,6 +24,7 @@ import com.zemin.downloader.common.core.currentTitle
 import com.zemin.downloader.common.util.toast
 import com.zemin.downloader.databinding.ActivityMainBinding
 import com.zemin.downloader.impl.DownloadType
+import com.zemin.downloader.update.UpdateManager
 import com.zemin.downloader.ui.util.extractSharedText
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -37,11 +38,13 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
     private lateinit var titleSelectorView: TextView
     private var isDownloading = false
     private var switchingDialog: AlertDialog? = null
+    private val updateManager by lazy { UpdateManager(this) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setupPlatformSelector()
         readSharedText(intent)
+        updateManager.checkOnStart()
 
         binding.btnLogin.setOnClickListener {
             loginLauncher.launch(Intent(this, LoginActivity::class.java))
