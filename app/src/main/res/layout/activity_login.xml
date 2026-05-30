@@ -14,7 +14,7 @@
         android:gravity="center_vertical"
         android:paddingStart="16dp"
         android:paddingEnd="16dp"
-        android:text="登录抖音"
+        android:text="@string/login_title_douyin"
         android:textColor="@color/white"
         android:textSize="20sp" />
 
@@ -40,7 +40,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="输入手机号和验证码完成登录"
+            android:text="@string/login_status_input_code"
             android:textColor="#606060"
             android:textSize="14sp" />
 
@@ -50,6 +50,6 @@
             android:layout_height="wrap_content"
             android:backgroundTint="@color/dy_primary"
             android:textColor="@color/white"
-            android:text="取消" />
+            android:text="@string/login_button_cancel" />
     </LinearLayout>
 </LinearLayout>

@@ -7,7 +7,7 @@ import com.zemin.downloader.appContext
 import com.zemin.downloader.common.IDownloadModule
 import com.zemin.downloader.common.IDownloadResult
 import com.zemin.downloader.common.PyBridgeConfig
-import com.zemin.downloader.common.util.LocalStorage
+import com.zemin.downloader.common.core.StoreModule
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -29,9 +29,7 @@ abstract class BasePyDownloadModule : IDownloadModule {
         }
 
     override val pyBridgeConfig: PyBridgeConfig
-        get() = PyBridgeConfig(
-            cookieString = LocalStorage.getCookieString(downloadType.name)
-        )
+        get() = PyBridgeConfig(cookieString = StoreModule.getCookieString())
 
     /**
      * 处理下载结果

@@ -2,8 +2,6 @@ package com.zemin.downloader.common.util
 
 import android.widget.Toast
 import com.zemin.downloader.appContext
-import com.zemin.downloader.impl.dy.DyDownloadResult
-import java.io.File
 import kotlin.math.roundToInt
 
 
@@ -17,10 +15,9 @@ fun formatOutputDir(path: String): String {
 fun compactFileName(name: String): String {
     val stem = name.substringBeforeLast('.', name)
     val extension = name.substringAfterLast('.', "")
-    val compact = stem
-        .replace(Regex("^\\d{4}-\\d{2}-\\d{2}_?"), "")
-        .replace(Regex("_?\\d{15,20}$"), "")
-        .ifBlank { stem }
+    val compact =
+        stem.replace(Regex("^\\d{4}-\\d{2}-\\d{2}_?"), "").replace(Regex("_?\\d{15,20}$"), "")
+            .ifBlank { stem }
     val shortName = ellipsizeMiddle(compact, 24)
     return if (extension.isBlank()) shortName else "$shortName.$extension"
 }
@@ -61,5 +58,5 @@ fun formatDuration(ms: Int): String {
 }
 
 fun toast(message: String) {
-    Toast.makeText(appContext, message, Toast.LENGTH_LONG).show()
+    Toast.makeText(appContext, message, Toast.LENGTH_SHORT).show()
 }

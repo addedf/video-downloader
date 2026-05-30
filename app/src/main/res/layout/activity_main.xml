@@ -13,6 +13,7 @@
         android:padding="16dp">
 
         <LinearLayout
+            android:id="@+id/loginSection"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="8dp"
@@ -32,7 +33,7 @@
                     android:id="@+id/accountDesc"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="抖音账号"
+                    android:text="@string/main_account_default"
                     android:textColor="@color/dy_text_muted"
                     android:textSize="13sp" />
 
@@ -41,7 +42,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="2dp"
-                    android:text="未登录"
+                    android:text="@string/main_status_not_logged_in"
                     android:textColor="@color/dy_primary_light"
                     android:textSize="16sp"
                     android:textStyle="bold" />
@@ -54,7 +55,7 @@
                 android:backgroundTint="@color/dy_primary"
                 android:paddingStart="16dp"
                 android:paddingEnd="16dp"
-                android:text="登录抖音"
+                android:text="@string/main_login_douyin"
                 android:textColor="@color/white"
                 android:textSize="14sp" />
         </LinearLayout>
@@ -70,15 +71,16 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="下载"
+                android:text="@string/main_section_download"
                 android:textColor="@color/dy_text_muted"
                 android:textSize="13sp" />
 
             <TextView
+                android:id="@+id/tvInputTitle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
-                android:text="抖音分享文本或链接"
+                android:text="@string/main_input_title_douyin"
                 android:textColor="@color/dy_primary_light"
                 android:textSize="18sp"
                 android:textStyle="bold" />
@@ -90,7 +92,7 @@
                 android:layout_marginTop="12dp"
                 android:background="@drawable/bg_share_input"
                 android:gravity="top|start"
-                android:hint="粘贴分享文本，支持短链或作品链接"
+                android:hint="@string/main_share_input_hint"
                 android:inputType="textMultiLine"
                 android:maxLines="6"
                 android:minLines="4"
@@ -111,7 +113,7 @@
                     android:layout_height="48dp"
                     android:layout_weight="1"
                     android:backgroundTint="@color/dy_cyan"
-                    android:text="清除链接"
+                    android:text="@string/main_button_clear"
                     android:textColor="@color/black" />
 
                 <Button
@@ -121,7 +123,7 @@
                     android:layout_marginStart="10dp"
                     android:layout_weight="1"
                     android:backgroundTint="@color/dy_primary"
-                    android:text="解析并下载"
+                    android:text="@string/main_button_download"
                     android:textColor="@color/white" />
             </LinearLayout>
 
@@ -139,7 +141,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
-                android:text="等待输入"
+                android:text="@string/main_status_waiting_input"
                 android:textColor="@color/dy_primary_light"
                 android:textSize="16sp"
                 android:textStyle="bold" />

@@ -57,7 +57,7 @@ class DyLoginModule : ILoginModule {
     }
 
     private fun saveCookies(cookieString: String) {
-        LocalStorage.saveCookies(currentType, cookieString)
+        LocalStorage.saveCookies(downloadType.type, cookieString)
         appScope.launch {
             DownloadModule.refreshCookies(cookieString)
         }

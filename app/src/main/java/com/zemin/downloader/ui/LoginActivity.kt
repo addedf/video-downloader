@@ -9,9 +9,11 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.Toast
+import com.zemin.downloader.R
 import com.zemin.downloader.common.base.BaseActivity
 import com.zemin.downloader.common.core.LoginModule
+import com.zemin.downloader.common.core.currentTitle
+import com.zemin.downloader.common.util.toast
 import com.zemin.downloader.databinding.ActivityLoginBinding
 
 class LoginActivity : BaseActivity<ActivityLoginBinding>(ActivityLoginBinding::inflate) {
@@ -61,6 +63,7 @@ class LoginActivity : BaseActivity<ActivityLoginBinding>(ActivityLoginBinding::i
                 finishLogin()
             }
         }
+        binding.tvLoginTitle.text = getString(R.string.login_title_douyin, currentTitle)
         binding.webView.loadUrl(LoginModule.loginUrl)
     }
 
@@ -68,8 +71,8 @@ class LoginActivity : BaseActivity<ActivityLoginBinding>(ActivityLoginBinding::i
         val hasLogin = LoginModule.checkLoginStatus(view)
         if (hasLogin) {
             loginDone = true
-            binding.tvLoginStatus.text = "已登录，Cookie 已保存"
-            binding.btnLoginAction.text = "完成"
+            binding.tvLoginStatus.text = getString(R.string.login_status_saved)
+            binding.btnLoginAction.text = getString(R.string.login_button_done)
             CookieManager.getInstance().flush()
         }
     }
@@ -83,7 +86,7 @@ class LoginActivity : BaseActivity<ActivityLoginBinding>(ActivityLoginBinding::i
             CookieManager.getInstance().flush()
             saveCookiesFromWebView()
             setResult(RESULT_OK, Intent())
-            Toast.makeText(this, "登录成功，Cookie 已保存", Toast.LENGTH_SHORT).show()
+            toast(getString(R.string.login_toast_success))
         }
         finish()
     }

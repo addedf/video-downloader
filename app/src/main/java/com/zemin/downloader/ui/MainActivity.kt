@@ -1,70 +1,64 @@
 package com.zemin.downloader.ui
 
-import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Bundle
+import android.view.Gravity
+import android.view.LayoutInflater
 import android.view.View
+import android.view.ViewGroup
+import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
+import androidx.appcompat.app.ActionBar
+import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.widget.PopupMenu
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import com.zemin.downloader.R
 import com.zemin.downloader.common.base.BaseActivity
+import com.zemin.downloader.common.core.BridgeAbilityManager
 import com.zemin.downloader.common.core.DownloadModule
 import com.zemin.downloader.common.core.LoginModule
 import com.zemin.downloader.common.core.StoreModule
+import com.zemin.downloader.common.core.currentDownloadType
 import com.zemin.downloader.common.core.currentTitle
-import com.zemin.downloader.common.util.MediaStorageManager
 import com.zemin.downloader.common.util.toast
 import com.zemin.downloader.databinding.ActivityMainBinding
+import com.zemin.downloader.impl.DownloadType
+import com.zemin.downloader.ui.util.extractSharedText
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import java.io.File
 
 class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::inflate) {
-    private val storageManager = MediaStorageManager
+    private val loginLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+            refreshLoginState()
+        }
+    private lateinit var titleSelectorView: TextView
     private var isDownloading = false
-
-    private val loginLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) {
-        refreshLoginState()
-    }
-
-    companion object {
-        private const val REQUEST_STORAGE_PERM = 1
-        private val URL_PATTERN = Regex("https?://\\S+")
-    }
+    private var switchingDialog: AlertDialog? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        requestStoragePermissionIfNeeded()
-        refreshLoginState()
+        setupPlatformSelector()
         readSharedText(intent)
 
         binding.btnLogin.setOnClickListener {
             loginLauncher.launch(Intent(this, LoginActivity::class.java))
         }
-
         binding.btnDownload.setOnClickListener {
             val input = binding.etUrl.text.toString().trim()
             when {
-                input.isEmpty() -> toast("请先粘贴${currentTitle}分享文本或链接")
-                isDownloading -> toast("已有下载任务正在进行")
+                input.isEmpty() -> toast(getString(R.string.main_toast_empty_input, currentTitle))
+                isDownloading -> toast(getString(R.string.main_toast_task_running))
                 else -> startDownload(input)
             }
         }
-
         binding.btnClear.setOnClickListener {
             clearLinkAndCancelDownload()
         }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        refreshLoginState()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -73,11 +67,16 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         readSharedText(intent)
     }
 
+    override fun onDestroy() {
+        dismissSwitchingDialog()
+        super.onDestroy()
+    }
+
     private fun startDownload(shareText: String) {
         if (LoginModule.needLogin) {
-            val hasCookie = StoreModule.hasCookie()
-            if (!hasCookie) {
-                showError("请先登录${currentTitle}获取 Cookie")
+            val loggedIn = StoreModule.loggedIn()
+            if (!loggedIn) {
+                showError(getString(R.string.main_toast_need_login, currentTitle))
                 loginLauncher.launch(Intent(this, LoginActivity::class.java))
                 return
             }
@@ -87,14 +86,16 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         setUiEnabled(false)
         binding.progressBar.visibility = View.VISIBLE
         binding.progressBar.isIndeterminate = true
-        binding.tvStatus.text = "Python 核心正在解析和下载..."
+        binding.tvStatus.text = getString(R.string.main_status_downloading)
         binding.tvInfo.visibility = View.VISIBLE
-        binding.tvInfo.text = "输出目录: ${storageManager.getPythonDownloadDir().absolutePath}"
+        binding.tvInfo.text = getString(
+            R.string.main_output_dir_format, StoreModule.getDownloadDir()
+        )
 
         lifecycleScope.launch {
             val taskStartedAt = System.currentTimeMillis()
             try {
-                storageManager.cleanupPythonDownloadCache()
+                StoreModule.cleanupDownloadCache()
                 val result = DownloadModule.download(inputText = shareText)
 
                 binding.progressBar.isIndeterminate = false
@@ -102,28 +103,33 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
 
                 val mediaRegisterStartedAt = System.currentTimeMillis()
                 val registeredUris = result.files.map(::File).mapNotNull { file ->
-                    storageManager.registerMediaFile(file)?.also {
-                        storageManager.deleteTemporaryDownloadFile(file)
+                    StoreModule.registerMediaFile(file)?.also {
+                        StoreModule.deleteTemporaryDownloadFile(file)
                     }
                 }
                 val mediaRegisterMs = (System.currentTimeMillis() - mediaRegisterStartedAt).toInt()
                 val taskTotalMs = (System.currentTimeMillis() - taskStartedAt).toInt()
 
                 if (result.ok || result.skipped > 0) {
-                    storageManager.cleanupPythonDownloadSidecars()
-                    binding.tvStatus.text = "下载完成"
+                    StoreModule.cleanupDownloadSidecars()
+                    binding.tvStatus.text = getString(R.string.main_status_download_done)
                     binding.tvInfo.visibility = View.VISIBLE
                     binding.tvInfo.text = result.formatDownloadSummary(
                         mediaCount = registeredUris.size,
                         mediaRegisterMs = mediaRegisterMs,
                         taskTotalMs = taskTotalMs,
                     )
-                    toast("下载完成")
+                    toast(getString(R.string.main_toast_download_done))
                 } else {
                     showError(result.error ?: result.message)
                 }
             } catch (e: Exception) {
-                showError("发生异常: ${e.message ?: "未知错误"}")
+                showError(
+                    getString(
+                        R.string.main_error_exception,
+                        e.message ?: getString(R.string.main_error_unknown)
+                    )
+                )
             } finally {
                 isDownloading = false
                 setUiEnabled(true)
@@ -136,23 +142,96 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         }
     }
 
-    private fun clearLinkAndCancelDownload() {
-        binding.etUrl.text?.clear()
-        binding.tvStatus.text = "已清空链接"
-        binding.tvInfo.visibility = View.GONE
-    }
+    private fun setupPlatformSelector() {
+        val selector = LayoutInflater.from(this).inflate(
+            R.layout.view_platform_selector, binding.root, false
+        ) as TextView
+        selector.apply {
+            setOnClickListener { view -> showPlatformMenu(view) }
+        }
+        titleSelectorView = selector
 
-    private fun requestStoragePermissionIfNeeded() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) return
-
-        if (ContextCompat.checkSelfPermission(
-                this, Manifest.permission.WRITE_EXTERNAL_STORAGE
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
-            ActivityCompat.requestPermissions(
-                this, arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE), REQUEST_STORAGE_PERM
+        supportActionBar?.apply {
+            setDisplayShowHomeEnabled(false)
+            setDisplayShowTitleEnabled(false)
+            setDisplayShowCustomEnabled(true)
+            setCustomView(
+                selector, ActionBar.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Gravity.START or Gravity.CENTER_VERTICAL
+                )
             )
         }
+    }
+
+    private fun showPlatformMenu(anchor: View) {
+        if (isDownloading) {
+            toast(getString(R.string.main_toast_switch_after_download))
+            return
+        }
+
+        PopupMenu(this, anchor).apply {
+            menu.setGroupCheckable(0, true, true)
+            BridgeAbilityManager.getAllBridgeAbility().forEachIndexed { index, downloadType ->
+                menu.add(
+                    0,
+                    index,
+                    index,
+                    getString(R.string.main_platform_title_format, downloadType.title)
+                ).isChecked = downloadType == currentDownloadType
+            }
+            setOnMenuItemClickListener { item ->
+                val selectedType = DownloadType.entries[item.itemId]
+                updateDownloadType(selectedType)
+                true
+            }
+            show()
+        }
+    }
+
+    private fun updateDownloadType(downloadType: DownloadType) {
+        if (downloadType == currentDownloadType) return
+
+        setUiEnabled(false)
+        showSwitchingDialog()
+        lifecycleScope.launch {
+            try {
+                BridgeAbilityManager.update(downloadType)
+                binding.tvStatus.text = getString(R.string.main_status_waiting_input)
+                binding.tvInfo.visibility = View.GONE
+                toast(getString(R.string.main_toast_platform_changed, currentTitle))
+            } finally {
+                dismissSwitchingDialog()
+                setUiEnabled(true)
+            }
+        }
+    }
+
+    override fun onAbilityChanged(downloadType: DownloadType) {
+        refreshPlatformUi()
+    }
+
+    private fun showSwitchingDialog() {
+        if (switchingDialog?.isShowing == true) return
+
+        val dialogView = LayoutInflater.from(this).inflate(
+            R.layout.dialog_switching_platform, binding.root, false
+        )
+        switchingDialog =
+            AlertDialog.Builder(this).setView(dialogView).setCancelable(false).create()
+                .also { it.show() }
+    }
+
+    private fun dismissSwitchingDialog() {
+        switchingDialog?.dismiss()
+        switchingDialog = null
+    }
+
+    private fun clearLinkAndCancelDownload() {
+        binding.etUrl.text?.clear()
+        binding.tvStatus.text = getString(R.string.main_status_link_cleared)
+        binding.tvInfo.visibility = View.GONE
     }
 
     private fun readSharedText(intent: Intent?) {
@@ -160,41 +239,36 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         if (sharedText.isNotBlank()) {
             binding.etUrl.setText(sharedText)
             binding.etUrl.setSelection(binding.etUrl.text?.length ?: 0)
-            binding.tvStatus.text = "已接收分享链接"
+            binding.tvStatus.text = getString(R.string.main_status_share_received)
             binding.tvInfo.visibility = View.GONE
         }
     }
 
-    private fun extractSharedText(intent: Intent?): String {
-        if (intent == null) return ""
-        return when (intent.action) {
-            Intent.ACTION_SEND -> {
-                val rawText = intent.getStringExtra(Intent.EXTRA_TEXT)
-                    ?: intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
-                    ?: intent.getStringExtra(Intent.EXTRA_SUBJECT) ?: ""
-                normalizeSharedText(rawText)
-            }
-
-            Intent.ACTION_VIEW -> {
-                normalizeSharedText(intent.dataString.orEmpty())
-            }
-
-            else -> ""
-        }
-    }
-
-    private fun normalizeSharedText(text: String): String {
-        val trimmed = text.trim()
-        if (trimmed.isEmpty()) return ""
-        val url = URL_PATTERN.find(trimmed)?.value?.trimEnd('.', ',', ';', '，', '。', '；', ')')
-        return url ?: trimmed
-    }
-
     private fun refreshLoginState() {
-        val loggedIn = StoreModule.hasCookie()
-        binding.tvLoginState.text = if (loggedIn) "已登录" else "未登录"
-        binding.btnLogin.text = if (loggedIn) "重新登录" else "登录"
-        binding.accountDesc.text = "${currentTitle}账号"
+        val needLogin = LoginModule.needLogin
+        binding.loginSection.visibility = if (needLogin) View.VISIBLE else View.GONE
+        if (!needLogin) return
+
+        val loggedIn = StoreModule.loggedIn()
+        binding.tvLoginState.text = if (loggedIn) {
+            getString(R.string.main_status_logged_in)
+        } else {
+            getString(R.string.main_status_not_logged_in)
+        }
+        binding.btnLogin.text = if (loggedIn) {
+            getString(R.string.main_button_relogin)
+        } else {
+            getString(R.string.main_button_login)
+        }
+        binding.accountDesc.text = getString(R.string.main_account_format, currentTitle)
+    }
+
+    private fun refreshPlatformUi() {
+        titleSelectorView.text =
+            getString(R.string.main_platform_selector_title_format, currentTitle)
+        binding.tvInputTitle.text = getString(R.string.main_input_title_format, currentTitle)
+        binding.etUrl.hint = getString(R.string.main_share_input_hint)
+        refreshLoginState()
     }
 
     private fun setUiEnabled(enabled: Boolean) {
@@ -205,7 +279,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
     }
 
     private fun showError(message: String?) {
-        binding.tvStatus.text = "出错了"
+        binding.tvStatus.text = getString(R.string.main_status_error)
         binding.tvInfo.visibility = View.VISIBLE
         if (!message.isNullOrEmpty()) {
             binding.tvInfo.text = message

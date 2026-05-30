@@ -6,35 +6,57 @@ import com.zemin.downloader.common.util.LocalStorage
 import com.zemin.downloader.impl.DownloadType
 import com.zemin.downloader.impl.dy.DyBridgeAbility
 import com.zemin.downloader.impl.xhs.XhsBridgeAbility
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ConcurrentHashMap
 
 object BridgeAbilityManager {
     private const val TAG = "BridgeAbilityManager"
     private val abilityCache = ConcurrentHashMap<DownloadType, IBridgeAbility>()
-    internal var currentAbility: IBridgeAbility = DyBridgeAbility()
+    private val abilityMutex = Mutex()
+    internal lateinit var currentAbility: IBridgeAbility
         private set
+    private val _downloadTypeFlow = MutableStateFlow<DownloadType?>(null)
+    val downloadTypeFlow: StateFlow<DownloadType?> = _downloadTypeFlow.asStateFlow()
 
     suspend fun init() {
-        currentAbility = getOrCreateBridgeAbility(LocalStorage.getAbility())
+        setCurrentAbility(LocalStorage.getAbility(), isSaveStorage = false)
     }
 
     suspend fun update(downloadType: DownloadType) {
-        if (currentAbility.downloadType == downloadType) {
-            Log.d(TAG, "update: is same downloadType = $downloadType")
-            return
+        setCurrentAbility(downloadType)
+    }
+
+    fun getAllBridgeAbility(): List<DownloadType> {
+        return DownloadType.entries
+    }
+
+    private suspend fun setCurrentAbility(
+        downloadType: DownloadType, isSaveStorage: Boolean = true
+    ) = abilityMutex.withLock {
+        if (::currentAbility.isInitialized && currentAbility.downloadType == downloadType) {
+            Log.d(TAG, "setCurrentAbility: is same downloadType = $downloadType")
+            return@withLock
         }
 
-        Log.d(TAG, "update: downloadType = $downloadType")
+        Log.d(TAG, "setCurrentAbility: downloadType = $downloadType")
         currentAbility = getOrCreateBridgeAbility(downloadType)
-        LocalStorage.saveAbility(downloadType)
-        notifyAbilityChanged()
+        if (isSaveStorage) {
+            LocalStorage.saveAbility(downloadType)
+        }
+        _downloadTypeFlow.value = downloadType
+
+        // 初始化
+        if (!currentAbility.initialized) {
+            val initSuccess = currentAbility.init()
+            Log.d(TAG, "setCurrentAbility: initSuccess = $initSuccess")
+        }
     }
 
-    private fun notifyAbilityChanged() {
-
-    }
-
-    private suspend fun getOrCreateBridgeAbility(downloadType: DownloadType): IBridgeAbility {
+    private fun getOrCreateBridgeAbility(downloadType: DownloadType): IBridgeAbility {
         val cacheAbility = abilityCache[downloadType]
         if (cacheAbility != null) {
             Log.d(TAG, "getBridgeAbility: from cache, type = $downloadType")
@@ -46,9 +68,6 @@ object BridgeAbilityManager {
             DownloadType.XIAO_HONG_SHU -> XhsBridgeAbility()
         }
         abilityCache[downloadType] = ability
-        // 初始化
-        val initSuccess = ability.init()
-        Log.d(TAG, "createBridgeAbility: initSuccess = $initSuccess, downloadType = $downloadType")
         return ability
     }
 }
