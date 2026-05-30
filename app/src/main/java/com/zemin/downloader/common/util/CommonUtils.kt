@@ -4,14 +4,6 @@ import android.widget.Toast
 import com.zemin.downloader.appContext
 import kotlin.math.roundToInt
 
-
-fun formatOutputDir(path: String): String {
-    val normalized = path.replace('\\', '/').trimEnd('/')
-    if (normalized.contains("/cache/python-downloads")) return "Movies/Douyin"
-    if (normalized.contains("/Movies/Douyin")) return "Movies/Douyin"
-    return ellipsizeMiddle(normalized.substringAfterLast("/"), 32)
-}
-
 fun compactFileName(name: String): String {
     val stem = name.substringBeforeLast('.', name)
     val extension = name.substringAfterLast('.', "")

@@ -3,7 +3,6 @@ package com.zemin.downloader.common
 import com.chaquo.python.PyObject
 import com.chaquo.python.Python
 import com.zemin.downloader.common.util.MediaStorageManager
-import com.zemin.downloader.impl.DownloadType
 
 /**
  * @author maozemin@coocaa.com
@@ -18,7 +17,7 @@ interface IDownloadModule : IBaseBusinessModule {
 
     suspend fun warmUp(): PyObject?
 
-    suspend fun download(inputText: String): IDownloadResult
+    suspend fun download(inputText: String): PyDownloadResult
 
     suspend fun refreshCookies(cookieString: String): PyObject?
 }

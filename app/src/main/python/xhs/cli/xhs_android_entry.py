@@ -15,6 +15,17 @@ _runtime: Dict[str, Any] = {
     "output_root": None,
     "cookie": "",
 }
+_MEDIA_SUFFIXES = {
+    ".gif",
+    ".jpeg",
+    ".jpg",
+    ".m4a",
+    ".mov",
+    ".mp3",
+    ".mp4",
+    ".png",
+    ".webp",
+}
 
 
 def warm_up(app_data_dir: str, output_dir: str, cookie_header: str) -> str:
@@ -95,27 +106,38 @@ async def _download_async(input_text: str, flow: AndroidFlowLogger) -> Dict[str,
             timeout=15,
             max_retry=2,
             record_data=False,
-            download_record=True,
+            download_record=False,
             image_format="JPEG",
             live_download=False,
             author_archive=False,
             folder_mode=False,
+            flow=flow,
         ) as xhs:
             items = await xhs.extract(input_text, download=True, data=True)
 
     with flow.stage("collect_files"):
-        files = _changed_files_since(output_root, started_wall)
+        files, ignored_files = _changed_files_since(output_root, started_wall)
+        flow.info("collect_files.result", files=len(files), ignored=len(ignored_files))
 
     ok_count = sum(1 for item in items if isinstance(item, dict) and item.get("下载地址"))
     failed = 0 if ok_count else 1
+    success_count = len(files) or ok_count
     flow.mark_total()
+    flow.info(
+        "download.done",
+        total_ms=flow.timings.get("total_ms"),
+        items=len(items),
+        success=success_count,
+        failed=failed,
+        files=len(files),
+    )
     return {
         "ok": bool(files or ok_count),
         "message": _summary_message(files, ok_count),
         "error": "" if files or ok_count else "未下载到文件，请检查链接、Cookie 或作品权限",
         "output_dir": str(output_root),
         "files": files,
-        "success": len(files) or ok_count,
+        "success": success_count,
         "failed": failed,
         "skipped": 0,
         "timings": dict(flow.timings),
@@ -125,19 +147,21 @@ async def _download_async(input_text: str, flow: AndroidFlowLogger) -> Dict[str,
     }
 
 
-def _changed_files_since(root: Path, started_at: float) -> List[str]:
+def _changed_files_since(root: Path, started_at: float) -> tuple[List[str], List[str]]:
     changed: List[str] = []
+    ignored: List[str] = []
     for path in root.rglob("*"):
         if not path.is_file():
             continue
-        if path.suffix == ".tmp":
-            continue
         try:
             if path.stat().st_mtime >= started_at:
-                changed.append(str(path))
+                if path.suffix.lower() in _MEDIA_SUFFIXES:
+                    changed.append(str(path))
+                else:
+                    ignored.append(str(path))
         except OSError:
             pass
-    return sorted(changed)
+    return sorted(changed), sorted(ignored)
 
 
 def _summary_message(files: List[str], ok_count: int) -> str:

@@ -11,11 +11,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.ActionBar
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.PopupMenu
-import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
 import com.zemin.downloader.R
 import com.zemin.downloader.common.base.BaseActivity
+import com.zemin.downloader.common.bean.formatDownloadSummary
 import com.zemin.downloader.common.core.BridgeAbilityManager
 import com.zemin.downloader.common.core.DownloadModule
 import com.zemin.downloader.common.core.LoginModule
@@ -27,7 +26,6 @@ import com.zemin.downloader.databinding.ActivityMainBinding
 import com.zemin.downloader.impl.DownloadType
 import com.zemin.downloader.ui.util.extractSharedText
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import java.io.File
 

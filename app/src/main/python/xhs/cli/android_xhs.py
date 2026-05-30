@@ -7,6 +7,7 @@ from re import compile
 from types import SimpleNamespace
 from urllib.parse import urlparse
 
+from .android_flow_logger import AndroidFlowLogger, url_preview
 from .source_bootstrap import install_module_exports
 
 install_module_exports()
@@ -80,8 +81,10 @@ class AndroidXHS:
             write_mtime: bool = False,
             language: str = "zh_CN",
             root: Path | None = None,
+            flow: AndroidFlowLogger | None = None,
     ):
         switch_language(language)
+        self.flow = flow
         self.print = Print()
         self.manager = Manager(
             root or ROOT,
@@ -142,27 +145,43 @@ class AndroidXHS:
             count: SimpleNamespace,
     ):
         name = self.__naming_rules(container)
+        work_id = container["作品ID"]
+        work_type = container["作品类型"]
         if (urls := container["下载地址"]) and download:
-            if await self.skip_download(i := container["作品ID"]):
-                self.logging(_("作品 {0} 存在下载记录，跳过下载").format(i))
-                count.skip += 1
-            else:
-                _, result = await self.download.run(
+            if self.flow is not None:
+                self.flow.info(
+                    "download_files.ready",
+                    work_id=work_id,
+                    work_type=work_type,
+                    urls=len(urls),
+                    lives=len(container["动图地址"]),
+                )
+            with self._stage("download_files", work_id=work_id, work_type=work_type, urls=len(urls)):
+                downloaded_files, result = await self.download.run(
                     urls,
                     container["动图地址"],
                     index,
                     container["作者ID"] + "_" + self.CLEANER.filter_name(container["作者昵称"]),
                     name,
-                    container["作品类型"],
+                    work_type,
                     container["时间戳"],
                 )
-                if not result:
-                    count.skip += 1
-                elif all(result):
-                    count.success += 1
-                    await self.__add_record(i)
-                else:
-                    count.fail += 1
+            if self.flow is not None:
+                self.flow.info(
+                    "download_files.result",
+                    work_id=work_id,
+                    path=downloaded_files,
+                    total=len(result),
+                    success=sum(1 for item in result if item),
+                    failed=sum(1 for item in result if not item),
+                )
+            if not result:
+                count.skip += 1
+            elif all(result):
+                count.success += 1
+                await self.__add_record(work_id)
+            else:
+                count.fail += 1
         elif not urls:
             self.logging(_("提取作品文件下载地址失败"), ERROR)
             count.fail += 1
@@ -186,20 +205,41 @@ class AndroidXHS:
             index: list | tuple | None = None,
             data: bool = True,
     ) -> list[dict]:
-        if not (urls := await self.extract_links(url)):
+        with self._stage("extract_links", input=url_preview(url)):
+            urls = await self.extract_links(url)
+        if not urls:
             self.logging(_("提取小红书作品链接失败"), WARNING)
+            if self.flow is not None:
+                self.flow.warning("extract_links.empty", input=url_preview(url))
             return []
+        if self.flow is not None:
+            self.flow.info("extract_links.result", count=len(urls), urls=[url_preview(i) for i in urls])
         statistics = SimpleNamespace(all=len(urls), success=0, fail=0, skip=0)
-        return [
-            await self.__deal_extract(i, download, index, data, count=statistics)
-            for i in urls
-        ]
+        items = []
+        for item in urls:
+            with self._stage("deal_extract", url=url_preview(item)):
+                items.append(await self.__deal_extract(item, download, index, data, count=statistics))
+        if self.flow is not None:
+            self.flow.info(
+                "extract.done",
+                total=statistics.all,
+                success=statistics.success,
+                failed=statistics.fail,
+                skipped=statistics.skip,
+            )
+        return items
 
     async def extract_links(self, url: str) -> list[str]:
         urls = []
         for item in str(url or "").split():
             if short := self.SHORT.search(item):
-                item = await self.html.request_url(short.group(), False)
+                short_url = short.group()
+                if self.flow is not None:
+                    self.flow.info("short_url.detected", url=url_preview(short_url))
+                with self._stage("resolve_short_url", url=url_preview(short_url)):
+                    item = await self.html.request_url(short_url, False)
+                if self.flow is not None:
+                    self.flow.info("short_url.resolved", resolved=url_preview(item))
             if share := self.SHARE.search(item):
                 urls.append(share.group())
             elif link := self.LINK.search(item):
@@ -219,8 +259,12 @@ class AndroidXHS:
         if await self.skip_download(id_ := self.__extract_link_id(url)) and not data:
             count.skip += 1
             return id_, {"message": _("作品 {0} 存在下载记录，跳过处理").format(id_)}
-        html = await self.html.request_url(url, cookie=cookie, proxy=proxy)
-        namespace = self.__generate_data_object(html)
+        with self._stage("request_note_html", work_id=id_, url=url_preview(url)):
+            html = await self.html.request_url(url, cookie=cookie, proxy=proxy)
+        if self.flow is not None:
+            self.flow.info("request_note_html.result", work_id=id_, bytes=len(str(html or "")))
+        with self._stage("parse_note_data", work_id=id_):
+            namespace = self.__generate_data_object(html)
         if not namespace:
             self.logging(_("{0} 获取数据失败").format(id_), ERROR)
             count.fail += 1
@@ -228,11 +272,19 @@ class AndroidXHS:
         return id_, namespace
 
     def _extract_data(self, namespace: Namespace, id_: str, count):
-        data = self.explore.run(namespace)
+        with self._stage("extract_note_fields", work_id=id_):
+            data = self.explore.run(namespace)
         if not data:
             self.logging(_("{0} 提取数据失败").format(id_), ERROR)
             count.fail += 1
             return {}
+        if self.flow is not None:
+            self.flow.info(
+                "extract_note_fields.result",
+                work_id=id_,
+                work_type=data.get("作品类型"),
+                title=url_preview(data.get("作品标题", "")),
+            )
         return data
 
     async def _deal_download_tasks(
@@ -244,14 +296,29 @@ class AndroidXHS:
             index: list | tuple | None,
             count: SimpleNamespace,
     ):
+        if self.flow is not None:
+            self.flow.info(
+                "download_tasks.prepare",
+                work_id=id_,
+                work_type=data.get("作品类型"),
+            )
         if data["作品类型"] == _("视频"):
-            self.__extract_video(data, namespace)
+            with self._stage("extract_video_urls", work_id=id_):
+                self.__extract_video(data, namespace)
         elif data["作品类型"] in {_("图文"), _("图集")}:
-            self.__extract_image(data, namespace)
+            with self._stage("extract_image_urls", work_id=id_):
+                self.__extract_image(data, namespace)
         else:
             self.logging(_("未知的作品类型：{0}").format(id_), WARNING)
             data["下载地址"] = []
             data["动图地址"] = []
+        if self.flow is not None:
+            self.flow.info(
+                "download_tasks.urls",
+                work_id=id_,
+                media_urls=len(data.get("下载地址", [])),
+                live_urls=len([i for i in data.get("动图地址", []) if i]),
+            )
         await self.update_author_nickname(data)
         await self.__download_files(data, download, index, count)
         return data
@@ -327,7 +394,14 @@ class AndroidXHS:
         ) or data["作品ID"]
 
     async def skip_download(self, id_: str) -> bool:
-        return bool(await self.id_recorder.select(id_))
+        if self.flow is not None:
+            self.flow.info("skip_download.disabled", work_id=id_)
+        return False
+
+    def _stage(self, name: str, **fields):
+        if self.flow is None:
+            return _NullStage()
+        return self.flow.stage(name, **fields)
 
     async def __aenter__(self):
         await self.id_recorder.__aenter__()
@@ -346,3 +420,11 @@ class AndroidXHS:
 
     def logging(self, text, style=INFO):
         logging(self.print, text, style)
+
+
+class _NullStage:
+    def __enter__(self):
+        return None
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        return False

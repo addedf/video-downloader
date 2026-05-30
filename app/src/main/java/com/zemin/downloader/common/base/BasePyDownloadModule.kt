@@ -5,8 +5,9 @@ import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
 import com.zemin.downloader.appContext
 import com.zemin.downloader.common.IDownloadModule
-import com.zemin.downloader.common.IDownloadResult
 import com.zemin.downloader.common.PyBridgeConfig
+import com.zemin.downloader.common.PyDownloadResult
+import com.zemin.downloader.common.core.DownloadResultParser
 import com.zemin.downloader.common.core.StoreModule
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -35,7 +36,9 @@ abstract class BasePyDownloadModule : IDownloadModule {
      * 处理下载结果
      */
     @WorkerThread
-    abstract suspend fun handleDownloadResult(result: String): IDownloadResult
+    open suspend fun handleDownloadResult(result: String): PyDownloadResult {
+        return DownloadResultParser.parse(result)
+    }
 
     override suspend fun warmUp() = withContext(Dispatchers.IO) {
         python.getModule(pyModuleName).callAttr(
@@ -50,7 +53,7 @@ abstract class BasePyDownloadModule : IDownloadModule {
         python.getModule(pyModuleName).callAttr(KEY_REFRESH_COOKIES, cookieString)
     }
 
-    override suspend fun download(inputText: String): IDownloadResult =
+    override suspend fun download(inputText: String): PyDownloadResult =
         withContext(Dispatchers.IO) {
             python.getModule(pyModuleName).callAttr(KEY_DOWNLOAD, inputText).toString().let {
                 handleDownloadResult(it)

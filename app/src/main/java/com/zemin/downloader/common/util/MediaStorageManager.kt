@@ -7,10 +7,12 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import com.zemin.downloader.appContext
+import com.zemin.downloader.common.core.currentType
 import java.io.File
 
 object MediaStorageManager {
-    const val MEDIA_DOWNLOAD_DIR = "Download"
+    const val CACHE_DOWNLOAD_DIR = "python-downloads"
+    const val MEDIA_DOWNLOAD_DIR = "Movies"
 
     fun getAppFileDir(): File {
         return File(appContext.filesDir, "python-runtime").apply {
@@ -20,7 +22,7 @@ object MediaStorageManager {
 
     fun getPythonDownloadDir(): File {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            File(appContext.cacheDir, "python-downloads")
+            File(appContext.cacheDir, CACHE_DOWNLOAD_DIR)
         } else {
             File(
                 Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES),
@@ -106,7 +108,7 @@ object MediaStorageManager {
             val values = ContentValues().apply {
                 put(MediaStore.Video.Media.DISPLAY_NAME, file.name)
                 put(MediaStore.Video.Media.MIME_TYPE, mimeType)
-                put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/$MEDIA_DOWNLOAD_DIR")
+                put(MediaStore.Video.Media.RELATIVE_PATH, getRegisterMediaDownloadDir())
                 put(MediaStore.Video.Media.IS_PENDING, 1)
             }
 
@@ -136,7 +138,7 @@ object MediaStorageManager {
             val values = ContentValues().apply {
                 put(MediaStore.Images.Media.DISPLAY_NAME, file.name)
                 put(MediaStore.Images.Media.MIME_TYPE, mimeType)
-                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/$MEDIA_DOWNLOAD_DIR")
+                put(MediaStore.Images.Media.RELATIVE_PATH, getRegisterMediaDownloadDir())
                 put(MediaStore.Images.Media.IS_PENDING, 1)
             }
 
@@ -160,4 +162,6 @@ object MediaStorageManager {
             Uri.fromFile(file)
         }
     }
+
+    fun getRegisterMediaDownloadDir(): String = "$MEDIA_DOWNLOAD_DIR/$currentType"
 }

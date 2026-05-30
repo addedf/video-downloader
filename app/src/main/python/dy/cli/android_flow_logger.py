@@ -6,7 +6,7 @@ from typing import Any, Dict, Iterator, Optional
 
 
 class AndroidFlowLogger:
-    def __init__(self, name: str = "AndroidDownloadFlow"):
+    def __init__(self, name: str = "DyAndroidFlow"):
         self.logger = logging.getLogger(name)
         self.logger.setLevel(logging.INFO)
         self.logger.propagate = False

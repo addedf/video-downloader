@@ -1,6 +1,5 @@
 [versions]
 # Kotlin & Android
-kotlin = "1.9.22"
 agp = "9.1.1"
 coreKtx = "1.18.0"
 junit = "4.14-SNAPSHOT"
@@ -12,6 +11,7 @@ material = "1.10.0"
 lifecycle = "2.7.0"
 coroutines  = "1.7.3"
 chaquopy = "17.0.0"
+moshi = "1.15.2"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -28,6 +28,7 @@ kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutine
 # Lifecycle（ViewModel 协程支持）
 lifecycle-runtime-ktx = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version.ref = "lifecycle" }
 lifecycle-viewmodel-ktx = { module = "androidx.lifecycle:lifecycle-viewmodel-ktx", version.ref = "lifecycle" }
+moshi-kotlin = { module = "com.squareup.moshi:moshi-kotlin", version.ref = "moshi" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

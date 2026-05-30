@@ -1,10 +1,8 @@
 <resources>
-    <string name="app_name">抖音下载器</string>
-    <string name="share_target_name">保存到抖音下载器</string>
-
+    <string name="app_name">短视频下载器</string>
+    <string name="share_target_name">保存到下载器</string>
     <string name="name_dou_yin">抖音</string>
     <string name="name_xhs">小红书</string>
-
     <string name="main_platform_title_format">%1$s下载器</string>
     <string name="main_platform_selector_title_format">%1$s下载器 ▾</string>
     <string name="main_input_title_format">%1$s分享文本或链接</string>
@@ -36,7 +34,7 @@
     <string name="main_error_exception">发生异常：%1$s</string>
     <string name="main_error_unknown">未知错误</string>
     <string name="main_output_dir_format">输出目录：%1$s</string>
-
+    <string name="main_task_complete">下载任务结束</string>
     <string name="login_title_douyin">登录%1$s</string>
     <string name="login_status_input_code">输入手机号和验证码完成登录</string>
     <string name="login_status_saved">已登录，登录信息已保存</string>

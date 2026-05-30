@@ -1,31 +1,20 @@
 package com.zemin.downloader.common
 
-interface IDownloadResult {
-    val ok: Boolean
+import com.zemin.downloader.common.bean.ApiMetric
+import com.zemin.downloader.common.bean.DownloadMetric
 
-    val files: List<String>
+interface IDownloadResult
 
-    val skipped: Int
-
-    val message: String?
-
-    val error: String?
-
-    fun fromDownload(downloadResult: String)
-
-    fun formatDownloadSummary(mediaCount: Int, mediaRegisterMs: Int, taskTotalMs: Int): String
-}
-
-data class ApiMetric(
-    val name: String, val durationMs: Int
-)
-
-data class DownloadMetric(
+open class PyDownloadResult(
     val ok: Boolean,
-    val host: String?,
-    val finalHost: String?,
-    val bytes: Long,
-    val durationMs: Int,
-    val firstChunkMs: Int,
-    val speedKbps: Int
-)
+    val message: String,
+    val error: String?,
+    val outputDir: String?,
+    val files: List<String> = emptyList(),
+    val success: Int,
+    val failed: Int,
+    val skipped: Int,
+    val timings: Map<String, Int>,
+    val downloadMetrics: List<DownloadMetric>,
+    val apiMetrics: List<ApiMetric>
+) : IDownloadResult

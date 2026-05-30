@@ -72,6 +72,9 @@ dependencies {
     implementation(libs.lifecycle.runtime.ktx)
     implementation(libs.lifecycle.viewmodel.ktx)
 
+    // 序列化
+    implementation(libs.moshi.kotlin)
+
 }
 
 chaquopy {
