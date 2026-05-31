@@ -11,36 +11,73 @@ import com.zemin.downloader.common.core.currentType
 import java.io.File
 
 object MediaStorageManager {
+    const val APP_FILE_DIR = "python-runtime"
     const val CACHE_DOWNLOAD_DIR = "python-downloads"
-    const val MEDIA_DOWNLOAD_DIR = "Movies"
+    const val MEDIA_PICTURE_DOWNLOAD_DIR = "Pictures"
+    const val MEDIA_VIDEO_DOWNLOAD_DIR = "Movies"
+    const val TEMP_EXTENSION = "tmp"
+    const val EXTENSION_MP4 = "mp4"
+    const val EXTENSION_MOV = "mov"
+    const val EXTENSION_M4A = "m4a"
+    const val EXTENSION_MP3 = "mp3"
+    const val EXTENSION_JPG = "jpg"
+    const val EXTENSION_JPEG = "jpeg"
+    const val EXTENSION_PNG = "png"
+    const val EXTENSION_WEBP = "webp"
+    const val EXTENSION_GIF = "gif"
+    const val MIME_VIDEO_PREFIX = "video/"
+    const val MIME_IMAGE_PREFIX = "image/"
+    const val MIME_VIDEO_MP4 = "video/mp4"
+    const val MIME_VIDEO_QUICKTIME = "video/quicktime"
+    const val MIME_AUDIO_MP4 = "audio/mp4"
+    const val MIME_AUDIO_MPEG = "audio/mpeg"
+    const val MIME_IMAGE_JPEG = "image/jpeg"
+    const val MIME_IMAGE_PNG = "image/png"
+    const val MIME_IMAGE_WEBP = "image/webp"
+    const val MIME_IMAGE_GIF = "image/gif"
+    const val PATH_SEPARATOR = "/"
+    const val DUPLICATE_FILE_NAME_SEPARATOR = "_"
+    const val FILE_EXTENSION_SEPARATOR = "."
+    const val EMPTY_EXTENSION = ""
+
+    private val MEDIA_EXTENSIONS = setOf(
+        EXTENSION_MP4,
+        EXTENSION_MOV,
+        EXTENSION_M4A,
+        EXTENSION_MP3,
+        EXTENSION_JPG,
+        EXTENSION_JPEG,
+        EXTENSION_PNG,
+        EXTENSION_WEBP,
+        EXTENSION_GIF,
+    )
 
     fun getAppFileDir(): File {
-        return File(appContext.filesDir, "python-runtime").apply {
+        return File(appContext.filesDir, APP_FILE_DIR).apply {
             if (!exists()) mkdirs()
         }
     }
 
     fun getPythonDownloadDir(): File {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            File(appContext.cacheDir, CACHE_DOWNLOAD_DIR)
-        } else {
-            File(
-                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES),
-                MEDIA_DOWNLOAD_DIR
-            )
-        }.apply {
+        return File(downloadCacheRoot(), CACHE_DOWNLOAD_DIR).apply {
             if (!exists()) mkdirs()
         }
     }
 
+    private fun downloadCacheRoot(): File {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            appContext.cacheDir
+        } else {
+            appContext.externalCacheDir ?: appContext.cacheDir
+        }
+    }
+
     fun cleanupPythonDownloadCache() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
         getPythonDownloadDir().deleteRecursively()
         getPythonDownloadDir().mkdirs()
     }
 
     fun cleanupPythonDownloadSidecars() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
         val cacheRoot = getPythonDownloadDir()
         cacheRoot.walkBottomUp().forEach { file ->
             if (file == cacheRoot) return@forEach
@@ -50,14 +87,13 @@ object MediaStorageManager {
             }
             val extension = file.extension.lowercase()
             val isMedia = extension in MEDIA_EXTENSIONS
-            if (!isMedia || extension == "tmp") {
+            if (!isMedia || extension == TEMP_EXTENSION) {
                 file.delete()
             }
         }
     }
 
     fun deleteTemporaryDownloadFile(file: File): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
         val cacheRoot = getPythonDownloadDir().canonicalFile
         val target = file.canonicalFile
         if (!target.path.startsWith(cacheRoot.path + File.separator)) return false
@@ -80,35 +116,40 @@ object MediaStorageManager {
         val extension = file.extension.lowercase()
         val mimeType = mimeTypeForExtension(extension) ?: return null
         return when {
-            mimeType.startsWith("video/") -> registerVideoToMediaStore(file, mimeType)
-            mimeType.startsWith("image/") -> registerImageToMediaStore(file, mimeType)
+            isVideoMimeType(mimeType) -> registerVideoToMediaStore(file, mimeType)
+            isImageMimeType(mimeType) -> registerImageToMediaStore(file, mimeType)
             else -> null
         }
     }
 
     private fun mimeTypeForExtension(extension: String): String? {
         return when (extension) {
-            "mp4" -> "video/mp4"
-            "mov" -> "video/quicktime"
-            "m4a" -> "audio/mp4"
-            "mp3" -> "audio/mpeg"
-            "jpg", "jpeg" -> "image/jpeg"
-            "png" -> "image/png"
-            "webp" -> "image/webp"
-            "gif" -> "image/gif"
+            EXTENSION_MP4 -> MIME_VIDEO_MP4
+            EXTENSION_MOV -> MIME_VIDEO_QUICKTIME
+            EXTENSION_M4A -> MIME_AUDIO_MP4
+            EXTENSION_MP3 -> MIME_AUDIO_MPEG
+            EXTENSION_JPG, EXTENSION_JPEG -> MIME_IMAGE_JPEG
+            EXTENSION_PNG -> MIME_IMAGE_PNG
+            EXTENSION_WEBP -> MIME_IMAGE_WEBP
+            EXTENSION_GIF -> MIME_IMAGE_GIF
             else -> null
         }
     }
 
-    private val MEDIA_EXTENSIONS =
-        setOf("mp4", "mov", "m4a", "mp3", "jpg", "jpeg", "png", "webp", "gif")
+    private fun isVideoMimeType(mimeType: String): Boolean {
+        return mimeType.startsWith(MIME_VIDEO_PREFIX)
+    }
 
-    private fun registerVideoToMediaStore(file: File, mimeType: String = "video/mp4"): Uri? {
+    private fun isImageMimeType(mimeType: String): Boolean {
+        return mimeType.startsWith(MIME_IMAGE_PREFIX)
+    }
+
+    private fun registerVideoToMediaStore(file: File, mimeType: String = MIME_VIDEO_MP4): Uri? {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val values = ContentValues().apply {
                 put(MediaStore.Video.Media.DISPLAY_NAME, file.name)
                 put(MediaStore.Video.Media.MIME_TYPE, mimeType)
-                put(MediaStore.Video.Media.RELATIVE_PATH, getRegisterMediaDownloadDir())
+                put(MediaStore.Video.Media.RELATIVE_PATH, getVideoMediaStoreRelativePath())
                 put(MediaStore.Video.Media.IS_PENDING, 1)
             }
 
@@ -125,11 +166,7 @@ object MediaStorageManager {
             appContext.contentResolver.update(uri, values, null, null)
             uri
         } else {
-            val intent = Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE).apply {
-                data = Uri.fromFile(file)
-            }
-            appContext.sendBroadcast(intent)
-            Uri.fromFile(file)
+            copyToPublicMediaDir(file, getLegacyVideoDownloadDir())?.let(::scanLegacyMediaFile)
         }
     }
 
@@ -138,7 +175,7 @@ object MediaStorageManager {
             val values = ContentValues().apply {
                 put(MediaStore.Images.Media.DISPLAY_NAME, file.name)
                 put(MediaStore.Images.Media.MIME_TYPE, mimeType)
-                put(MediaStore.Images.Media.RELATIVE_PATH, getRegisterMediaDownloadDir())
+                put(MediaStore.Images.Media.RELATIVE_PATH, getImageMediaStoreRelativePath())
                 put(MediaStore.Images.Media.IS_PENDING, 1)
             }
 
@@ -155,13 +192,84 @@ object MediaStorageManager {
             appContext.contentResolver.update(uri, values, null, null)
             uri
         } else {
-            val intent = Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE).apply {
-                data = Uri.fromFile(file)
-            }
-            appContext.sendBroadcast(intent)
-            Uri.fromFile(file)
+            copyToPublicMediaDir(file, getLegacyPictureDownloadDir())?.let(::scanLegacyMediaFile)
         }
     }
 
-    fun getRegisterMediaDownloadDir(): String = "$MEDIA_DOWNLOAD_DIR/$currentType"
+    private fun copyToPublicMediaDir(source: File, targetDir: File): File? {
+        if (!source.exists()) return null
+        targetDir.mkdirs()
+        val target = uniqueTargetFile(targetDir, source.name)
+        source.inputStream().use { input ->
+            target.outputStream().use { output -> input.copyTo(output) }
+        }
+        return target
+    }
+
+    private fun uniqueTargetFile(targetDir: File, fileName: String): File {
+        val original = File(targetDir, fileName)
+        if (!original.exists()) return original
+
+        val baseName = fileName.substringBeforeLast(FILE_EXTENSION_SEPARATOR, fileName)
+        val extension = fileName.substringAfterLast(FILE_EXTENSION_SEPARATOR, EMPTY_EXTENSION)
+        var index = 1
+        while (true) {
+            val candidateName = if (extension.isBlank()) {
+                "$baseName$DUPLICATE_FILE_NAME_SEPARATOR$index"
+            } else {
+                "$baseName$DUPLICATE_FILE_NAME_SEPARATOR$index$FILE_EXTENSION_SEPARATOR$extension"
+            }
+            val candidate = File(targetDir, candidateName)
+            if (!candidate.exists()) return candidate
+            index++
+        }
+    }
+
+    private fun scanLegacyMediaFile(file: File): Uri {
+        val uri = Uri.fromFile(file)
+        val intent = Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE).apply {
+            data = uri
+        }
+        appContext.sendBroadcast(intent)
+        return uri
+    }
+
+    fun getPublicMediaRelativePathForCachePath(cachePath: String): String? {
+        val mimeType = mimeTypeForCachePath(cachePath) ?: return null
+        return when {
+            isImageMimeType(mimeType) -> getImageMediaStoreRelativePath()
+            isVideoMimeType(mimeType) -> getVideoMediaStoreRelativePath()
+            else -> null
+        }
+    }
+
+    private fun mimeTypeForCachePath(cachePath: String): String? {
+        return mimeTypeForExtension(File(cachePath).extension.lowercase())
+    }
+
+    fun getVideoMediaStoreRelativePath(): String {
+        return buildMediaStoreRelativePath(MEDIA_VIDEO_DOWNLOAD_DIR)
+    }
+
+    fun getImageMediaStoreRelativePath(): String {
+        return buildMediaStoreRelativePath(MEDIA_PICTURE_DOWNLOAD_DIR)
+    }
+
+    private fun buildMediaStoreRelativePath(rootDir: String): String {
+        return rootDir + PATH_SEPARATOR + currentType
+    }
+
+    private fun getLegacyVideoDownloadDir(): File {
+        return getLegacyPublicMediaDir(Environment.DIRECTORY_MOVIES)
+    }
+
+    private fun getLegacyPictureDownloadDir(): File {
+        return getLegacyPublicMediaDir(Environment.DIRECTORY_PICTURES)
+    }
+
+    private fun getLegacyPublicMediaDir(environmentDir: String): File {
+        return File(
+            Environment.getExternalStoragePublicDirectory(environmentDir), currentType
+        )
+    }
 }

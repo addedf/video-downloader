@@ -35,11 +35,11 @@ fun PyDownloadResult.formatDownloadSummary(
             append("\n下载目录：")
             append(mediaCount)
             append(" 个 · ")
-            append(formatOutputDir(outputDir.orEmpty()))
+            append(formatOutputDir(files))
         } else {
             outputDir?.takeIf { it.isNotBlank() }?.let {
                 append("\n下载目录：")
-                append(formatOutputDir(outputDir))
+                append(formatOutputDir(listOf(outputDir)))
             }
         }
 
@@ -109,13 +109,15 @@ private fun PyDownloadResult.formatProcessLog(
     }
 }
 
-fun formatOutputDir(path: String): String {
+fun formatOutputDir(paths: List<String>): String {
+    val registeredDirs = paths
+        .mapNotNull { MediaStorageManager.getPublicMediaRelativePathForCachePath(it) }
+        .distinct()
+    if (registeredDirs.isNotEmpty()) {
+        return registeredDirs.joinToString(" / ")
+    }
+
+    val path = paths.firstOrNull().orEmpty()
     val normalized = path.replace('\\', '/').trimEnd('/')
-    if (normalized.contains("/${MediaStorageManager.CACHE_DOWNLOAD_DIR}")) {
-        return MediaStorageManager.getRegisterMediaDownloadDir()
-    }
-    if (normalized.contains("/${MediaStorageManager.MEDIA_DOWNLOAD_DIR}")) {
-        return MediaStorageManager.getRegisterMediaDownloadDir()
-    }
     return ellipsizeMiddle(normalized.substringAfterLast("/"), 32)
 }
