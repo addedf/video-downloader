@@ -49,10 +49,5 @@
     <string name="update_version_unknown">未知版本</string>
     <string name="update_changelog_empty">暂无更新说明</string>
     <string name="update_toast_empty_apk_url">下载链接为空</string>
-    <string name="update_download_title">正在下载新版本</string>
-    <string name="update_download_desc">下载完成后将打开安装界面</string>
-    <string name="update_toast_download_started">开始下载新版本</string>
-    <string name="update_toast_download_failed">新版本下载失败</string>
-    <string name="update_toast_no_installer">未找到可安装 APK 的应用</string>
-    <string name="update_toast_install_permission_required">请允许本应用安装未知来源应用</string>
+    <string name="update_toast_no_browser">未找到可打开下载链接的应用</string>
 </resources>

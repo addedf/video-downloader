@@ -24,8 +24,8 @@ import com.zemin.downloader.common.core.currentTitle
 import com.zemin.downloader.common.util.toast
 import com.zemin.downloader.databinding.ActivityMainBinding
 import com.zemin.downloader.impl.DownloadType
-import com.zemin.downloader.update.UpdateManager
 import com.zemin.downloader.ui.util.extractSharedText
+import com.zemin.downloader.update.UpdateManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
