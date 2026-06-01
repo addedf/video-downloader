@@ -1,5 +1,6 @@
 from asyncio import Semaphore, gather
 from pathlib import Path
+from time import perf_counter
 from typing import TYPE_CHECKING, Any
 
 from aiofiles import open
@@ -67,6 +68,7 @@ class Download:
         self.live_download = manager.live_download
         self.author_archive = manager.author_archive
         self.write_mtime = manager.write_mtime
+        self.progress_reporter = getattr(manager, "progress_reporter", None)
 
     async def run(
         self,
@@ -203,12 +205,14 @@ class Download:
         mtime: int,
     ):
         async with self.SEMAPHORE:
+            started_at = perf_counter()
             headers = self.headers.copy()
             temp = self.temp.joinpath(f"{name}.{format_}")
-            self.__update_headers_range(
+            completed = self.__update_headers_range(
                 headers,
                 temp,
             )
+            initial_completed = completed
             try:
                 async with self.client.stream(
                     "GET",
@@ -221,6 +225,10 @@ class Download:
                             _("文件 {0} 缓存异常，重新下载").format(temp.name),
                         )
                     response.raise_for_status()
+                    total = self.__content_length(
+                        response.headers.get("Content-Length"),
+                        completed,
+                    )
                     # self.__create_progress(
                     #     bar,
                     #     int(
@@ -230,6 +238,13 @@ class Download:
                     async with open(temp, "ab") as f:
                         async for chunk in response.aiter_bytes(self.chunk):
                             await f.write(chunk)
+                            completed += len(chunk)
+                            self.__report_progress(
+                                completed,
+                                total,
+                                started_at,
+                                initial_completed,
+                            )
                             # self.__update_progress(bar, len(chunk))
                 real = await self.__suffix_with_file(
                     temp,
@@ -243,6 +258,13 @@ class Download:
                     real,
                     mtime,
                     self.write_mtime,
+                )
+                self.__report_progress(
+                    completed,
+                    total,
+                    started_at,
+                    initial_completed,
+                    force=True,
                 )
                 # self.__create_progress(bar, None)
                 logging(self.print, _("文件 {0} 下载成功").format(real.name))
@@ -304,6 +326,36 @@ class Download:
     @staticmethod
     def __get_resume_byte_position(file: Path) -> int:
         return file.stat().st_size if file.is_file() else 0
+
+    @staticmethod
+    def __content_length(content_length: str | None, completed: int) -> int:
+        try:
+            remaining = int(content_length or 0)
+        except ValueError:
+            remaining = 0
+        return completed + remaining if remaining > 0 else 0
+
+    def __report_progress(
+        self,
+        completed: int,
+        total: int,
+        started_at: float,
+        initial_completed: int,
+        *,
+        force: bool = False,
+    ) -> None:
+        if self.progress_reporter is None:
+            return
+        progress = getattr(self.progress_reporter, "on_file_progress", None)
+        if not callable(progress):
+            return
+        elapsed = max(perf_counter() - started_at, 0.001)
+        progress(
+            completed,
+            total,
+            int(max(0, completed - initial_completed) / elapsed),
+            force=force,
+        )
 
     def __update_headers_range(
         self,

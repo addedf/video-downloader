@@ -141,6 +141,7 @@ class AndroidXHS:
             language: str = "zh_CN",
             root: Path | None = None,
             flow: AndroidFlowLogger | None = None,
+            progress_reporter=None,
             short_url_cache: dict[str, str] | None = None,
     ):
         switch_language(language)
@@ -173,6 +174,7 @@ class AndroidXHS:
             self.print,
         )
         self.mapping_data = mapping_data or {}
+        self.manager.progress_reporter = progress_reporter
         self.map_recorder = MapRecorder(self.manager)
         self.mapping = Mapping(self.manager, self.map_recorder)
         self.html = AndroidHtml(self.manager)

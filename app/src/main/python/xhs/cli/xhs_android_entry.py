@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 
 from .android_xhs import AndroidXHS
 from .android_flow_logger import AndroidFlowLogger, url_preview
+from .android_progress_reporter import AndroidProgressReporter
 
 _runtime: Dict[str, Any] = {
     "app_root": None,
@@ -55,10 +56,10 @@ def refresh_cookies(cookie_header: str) -> str:
     return json.dumps({"ok": True}, ensure_ascii=False)
 
 
-def download(input_text: str) -> str:
+def download(input_text: str, progress_callback=None) -> str:
     flow = AndroidFlowLogger()
     try:
-        result = asyncio.run(_download_async(input_text, flow))
+        result = asyncio.run(_download_async(input_text, flow, progress_callback))
     except Exception as exc:
         flow.mark_total()
         flow.error("download.failed", error=str(exc), input=url_preview(input_text))
@@ -86,7 +87,11 @@ def _prepare_runtime(app_root: Path, output_root: Path) -> None:
     _runtime["output_root"] = output_root
 
 
-async def _download_async(input_text: str, flow: AndroidFlowLogger) -> Dict[str, Any]:
+async def _download_async(
+    input_text: str,
+    flow: AndroidFlowLogger,
+    progress_callback=None,
+) -> Dict[str, Any]:
     if _runtime["app_root"] is None or _runtime["output_root"] is None:
         return _error("Python runtime is not initialized", timings=dict(flow.timings))
 
@@ -98,6 +103,7 @@ async def _download_async(input_text: str, flow: AndroidFlowLogger) -> Dict[str,
     output_root: Path = _runtime["output_root"]
     cookie = str(_runtime.get("cookie") or "")
     started_wall = time.time()
+    progress_reporter = AndroidProgressReporter(progress_callback)
 
     flow.info("download.begin", input=url_preview(input_text), output_dir=str(output_root))
     with flow.stage("download_content", has_cookie=bool(cookie)):
@@ -115,6 +121,7 @@ async def _download_async(input_text: str, flow: AndroidFlowLogger) -> Dict[str,
             author_archive=False,
             folder_mode=False,
             flow=flow,
+            progress_reporter=progress_reporter,
             short_url_cache=_SHORT_URL_CACHE,
         ) as xhs:
             items = await xhs.extract(input_text, download=True, data=True)
