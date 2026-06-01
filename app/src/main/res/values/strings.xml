@@ -35,6 +35,10 @@
     <string name="main_error_unknown">未知错误</string>
     <string name="main_output_dir_format">输出目录：%1$s</string>
     <string name="main_task_complete">下载任务结束</string>
+    <string name="main_progress_size_unknown">0B / 未知</string>
+    <string name="main_progress_size_format">%1$s / %2$s</string>
+    <string name="main_progress_speed_unknown">速度计算中</string>
+    <string name="main_progress_speed_format">%1$s/s</string>
     <string name="login_title_douyin">登录%1$s</string>
     <string name="login_status_input_code">输入手机号和验证码完成登录</string>
     <string name="login_status_saved">已登录，登录信息已保存</string>

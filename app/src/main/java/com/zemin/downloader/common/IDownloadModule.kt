@@ -17,9 +17,21 @@ interface IDownloadModule : IBaseBusinessModule {
 
     suspend fun warmUp(): PyObject?
 
-    suspend fun download(inputText: String): PyDownloadResult
+    suspend fun download(
+        inputText: String,
+        progressListener: DownloadProgressListener? = null,
+    ): PyDownloadResult
 
     suspend fun refreshCookies(cookieString: String): PyObject?
+}
+
+interface DownloadProgressListener {
+    fun onProgress(
+        percent: Int,
+        downloadedBytes: Long,
+        totalBytes: Long,
+        speedBytesPerSecond: Long,
+    )
 }
 
 data class PyBridgeConfig(val cookieString: String?) {

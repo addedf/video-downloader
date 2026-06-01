@@ -232,6 +232,7 @@ def _patch_asset_downloads() -> None:
             mode,
             author_name,
         )
+        setattr(self.file_manager, "_android_progress_reporter", self.progress_reporter)
         ok = await original_download_aweme_assets(
             self,
             aweme_data,
@@ -377,12 +378,19 @@ def _patch_asset_downloads() -> None:
                     prefer_response_content_type=prefer_response_content_type,
                 )
                 tmp_path = final_path.with_suffix(final_path.suffix + ".tmp")
+                reporter = getattr(self, "_android_progress_reporter", None)
                 async with aiofiles.open(tmp_path, "wb") as file:
                     async for chunk in response.content.iter_chunked(_ANDROID_DOWNLOAD_CHUNK_SIZE):
                         if first_chunk_ms is None:
                             first_chunk_ms = _elapsed_ms(started_at)
                         await file.write(chunk)
                         written += len(chunk)
+                        _report_file_progress(
+                            reporter,
+                            written,
+                            expected_size,
+                            started_at,
+                        )
 
                 if expected_size is not None and written != expected_size:
                     duration_ms = _elapsed_ms(started_at)
@@ -415,6 +423,13 @@ def _patch_asset_downloads() -> None:
 
                 os.replace(str(tmp_path), str(final_path))
                 duration_ms = _elapsed_ms(started_at)
+                _report_file_progress(
+                    reporter,
+                    written,
+                    expected_size,
+                    started_at,
+                    force=True,
+                )
                 logger.info(
                     "asset.file.done file=%s host=%s final_host=%s duration_ms=%s ok=True bytes=%s expected_bytes=%s first_chunk_ms=%s speed_kbps=%s",
                     getattr(final_path, "name", final_path),
@@ -495,6 +510,32 @@ def _file_size(path) -> int:
 
 def _speed_kbps(bytes_written: int, duration_ms: int) -> int:
     return int((bytes_written or 0) / max(duration_ms / 1000, 0.001) / 1024)
+
+
+def _speed_bytes_per_second(bytes_written: int, started_at: float) -> int:
+    elapsed_seconds = max(time.perf_counter() - started_at, 0.001)
+    return int((bytes_written or 0) / elapsed_seconds)
+
+
+def _report_file_progress(
+    reporter,
+    written: int,
+    expected_size: Optional[int],
+    started_at: float,
+    *,
+    force: bool = False,
+) -> None:
+    if reporter is None:
+        return
+    progress = getattr(reporter, "on_file_progress", None)
+    if not callable(progress):
+        return
+    progress(
+        int(written or 0),
+        int(expected_size or 0),
+        _speed_bytes_per_second(written, started_at),
+        force=force,
+    )
 
 
 def _detect_media_type_for_log(aweme_data: Dict[str, Any]) -> str:

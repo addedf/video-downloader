@@ -2,6 +2,7 @@ package com.zemin.downloader.ui
 
 import android.content.Intent
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
@@ -13,6 +14,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.PopupMenu
 import androidx.lifecycle.lifecycleScope
 import com.zemin.downloader.R
+import com.zemin.downloader.common.DownloadProgressListener
 import com.zemin.downloader.common.base.BaseActivity
 import com.zemin.downloader.common.bean.formatDownloadSummary
 import com.zemin.downloader.common.core.BridgeAbilityManager
@@ -21,15 +23,18 @@ import com.zemin.downloader.common.core.LoginModule
 import com.zemin.downloader.common.core.StoreModule
 import com.zemin.downloader.common.core.currentDownloadType
 import com.zemin.downloader.common.core.currentTitle
+import com.zemin.downloader.common.util.formatBytes
 import com.zemin.downloader.common.util.toast
 import com.zemin.downloader.databinding.ActivityMainBinding
 import com.zemin.downloader.impl.BridgeAbilityConfig
 import com.zemin.downloader.impl.DownloadType
 import com.zemin.downloader.ui.util.extractSharedText
 import com.zemin.downloader.update.UpdateManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
+import java.util.concurrent.atomic.AtomicLong
 
 class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::inflate) {
     private val loginLauncher =
@@ -39,6 +44,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
     private lateinit var titleSelectorView: TextView
     private var isDownloading = false
     private var switchingDialog: AlertDialog? = null
+    private val lastProgressUiUpdatedAt = AtomicLong(PROGRESS_RECORD_INIT_TIME)
     private val updateManager by lazy { UpdateManager(this) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -89,20 +95,31 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         setUiEnabled(false)
         binding.progressBar.visibility = View.VISIBLE
         binding.progressBar.isIndeterminate = true
+        binding.progressBar.progress = PROGRESS_INIT
+        binding.progressDetail.visibility = View.VISIBLE
         binding.tvStatus.text = getString(R.string.main_status_downloading)
         binding.tvInfo.visibility = View.VISIBLE
         binding.tvInfo.text = getString(
             R.string.main_output_dir_format, StoreModule.getDownloadDir()
         )
+        updateProgressDetail(
+            downloadedBytes = EMPTY_BYTE_COUNT,
+            totalBytes = EMPTY_BYTE_COUNT,
+            speedBytesPerSecond = EMPTY_BYTE_COUNT,
+        )
+        lastProgressUiUpdatedAt.set(PROGRESS_RECORD_INIT_TIME)
 
         lifecycleScope.launch {
             val taskStartedAt = System.currentTimeMillis()
             try {
                 StoreModule.cleanupDownloadCache()
-                val result = DownloadModule.download(inputText = shareText)
+                val result = DownloadModule.download(
+                    inputText = shareText,
+                    progressListener = createDownloadProgressListener(),
+                )
 
                 binding.progressBar.isIndeterminate = false
-                binding.progressBar.progress = 100
+                binding.progressBar.progress = PROGRESS_COMPLETE
 
                 val mediaRegisterStartedAt = System.currentTimeMillis()
                 val registeredUris = result.files.map(::File).mapNotNull { file ->
@@ -137,11 +154,30 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
                 isDownloading = false
                 setUiEnabled(true)
                 lifecycleScope.launch {
-                    delay(1500)
+                    delay(PROGRESS_HIDE_DELAY_MS)
                     binding.progressBar.visibility = View.GONE
+                    binding.progressDetail.visibility = View.GONE
                     binding.progressBar.isIndeterminate = false
                 }
             }
+        }
+    }
+
+    private fun updateProgressDetail(
+        downloadedBytes: Long,
+        totalBytes: Long,
+        speedBytesPerSecond: Long,
+    ) {
+        val downloadedText = formatBytes(downloadedBytes)
+        binding.tvProgressSize.text = if (totalBytes > EMPTY_BYTE_COUNT) {
+            getString(R.string.main_progress_size_format, downloadedText, formatBytes(totalBytes))
+        } else {
+            getString(R.string.main_progress_size_unknown)
+        }
+        binding.tvProgressSpeed.text = if (speedBytesPerSecond > EMPTY_BYTE_COUNT) {
+            getString(R.string.main_progress_speed_format, formatBytes(speedBytesPerSecond))
+        } else {
+            getString(R.string.main_progress_speed_unknown)
         }
     }
 
@@ -289,5 +325,54 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
             binding.tvInfo.text = message
             toast(message)
         }
+    }
+
+    private fun createDownloadProgressListener(): DownloadProgressListener =
+        object : DownloadProgressListener {
+            override fun onProgress(
+                percent: Int,
+                downloadedBytes: Long,
+                totalBytes: Long,
+                speedBytesPerSecond: Long,
+            ) {
+                if (!shouldDispatchProgressUpdate(downloadedBytes, totalBytes)) return
+
+                lifecycleScope.launch(Dispatchers.Main) {
+                    binding.progressBar.visibility = View.VISIBLE
+                    binding.progressDetail.visibility = View.VISIBLE
+                    binding.progressBar.isIndeterminate = totalBytes <= EMPTY_BYTE_COUNT
+                    if (totalBytes > EMPTY_BYTE_COUNT) {
+                        binding.progressBar.progress = percent.coerceIn(0, PROGRESS_COMPLETE)
+                    }
+                    updateProgressDetail(downloadedBytes, totalBytes, speedBytesPerSecond)
+                }
+            }
+
+            private fun shouldDispatchProgressUpdate(
+                downloadedBytes: Long, totalBytes: Long
+            ): Boolean {
+                val now = SystemClock.elapsedRealtime()
+                val isComplete = totalBytes > EMPTY_BYTE_COUNT && downloadedBytes >= totalBytes
+
+                while (true) {
+                    val lastUpdatedAt = lastProgressUiUpdatedAt.get()
+                    val interval = now - lastUpdatedAt
+                    if (!isComplete && lastUpdatedAt > 0L && interval < PROGRESS_UI_UPDATE_INTERVAL_MS) {
+                        return false
+                    }
+                    if (lastProgressUiUpdatedAt.compareAndSet(lastUpdatedAt, now)) {
+                        return true
+                    }
+                }
+            }
+        }
+
+    private companion object {
+        const val PROGRESS_INIT = 0
+        const val PROGRESS_COMPLETE = 100
+        const val PROGRESS_RECORD_INIT_TIME = 0L
+        const val PROGRESS_HIDE_DELAY_MS = 1500L
+        const val PROGRESS_UI_UPDATE_INTERVAL_MS = 200L
+        const val EMPTY_BYTE_COUNT = 0L
     }
 }

@@ -18,4 +18,7 @@
     <dimen name="update_dialog_content_top_margin">22dp</dimen>
     <dimen name="update_dialog_content_line_spacing">2dp</dimen>
     <dimen name="update_dialog_button_top_margin">24dp</dimen>
+    <dimen name="download_progress_top_margin">18dp</dimen>
+    <dimen name="download_progress_detail_top_margin">6dp</dimen>
+    <dimen name="download_progress_detail_text_size">12sp</dimen>
 </resources>

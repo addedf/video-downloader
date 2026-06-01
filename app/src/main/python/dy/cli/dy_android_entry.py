@@ -90,12 +90,12 @@ def refresh_cookies(cookie_header: str):
     config_loader.update(cookies=cookies)
 
 
-def download(input_text: str) -> str:
+def download(input_text: str, progress_callback=None) -> str:
     flow = new_flow_logger()
     try:
         reset_android_metrics()
         flow.info("download.begin", input=url_preview(input_text))
-        result = asyncio.run(_download_async(input_text, flow))
+        result = asyncio.run(_download_async(input_text, flow, progress_callback))
     except Exception as exc:
         flow.mark_total()
         flow.error("download.failed", total_ms=flow.timings.get("total_ms"), error=str(exc))
@@ -110,7 +110,11 @@ def download(input_text: str) -> str:
     return json.dumps(result, ensure_ascii=False)
 
 
-async def _download_async(input_text: str, flow: AndroidFlowLogger) -> Dict[str, Any]:
+async def _download_async(
+        input_text: str,
+        flow: AndroidFlowLogger,
+        progress_callback=None,
+) -> Dict[str, Any]:
     started_wall = time.time()
 
     cookie_manager = _android_global_config.cookie_manager
@@ -130,7 +134,7 @@ async def _download_async(input_text: str, flow: AndroidFlowLogger) -> Dict[str,
         return _error("请先粘贴抖音分享文本或链接")
 
     flow.info("download.context", output_dir=output_root, has_cookie=bool(cookies))
-    reporter = AndroidProgressReporter()
+    reporter = AndroidProgressReporter(progress_callback)
     try:
         with flow.stage("api_client_create"):
             api_client_context = DouyinAPIClient(cookies, proxy=config.get("proxy"))

@@ -4,6 +4,7 @@ import androidx.annotation.WorkerThread
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
 import com.zemin.downloader.appContext
+import com.zemin.downloader.common.DownloadProgressListener
 import com.zemin.downloader.common.IDownloadModule
 import com.zemin.downloader.common.PyBridgeConfig
 import com.zemin.downloader.common.PyDownloadResult
@@ -53,12 +54,15 @@ abstract class BasePyDownloadModule : IDownloadModule {
         python.getModule(pyModuleName).callAttr(KEY_REFRESH_COOKIES, cookieString)
     }
 
-    override suspend fun download(inputText: String): PyDownloadResult =
-        withContext(Dispatchers.IO) {
-            python.getModule(pyModuleName).callAttr(KEY_DOWNLOAD, inputText).toString().let {
+    override suspend fun download(
+        inputText: String,
+        progressListener: DownloadProgressListener?,
+    ): PyDownloadResult = withContext(Dispatchers.IO) {
+        python.getModule(pyModuleName).callAttr(KEY_DOWNLOAD, inputText, progressListener)
+            .toString().let {
                 handleDownloadResult(it)
             }
-        }
+    }
 }
 
 

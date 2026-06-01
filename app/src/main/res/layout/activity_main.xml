@@ -132,9 +132,36 @@
                 style="?android:attr/progressBarStyleHorizontal"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="18dp"
+                android:layout_marginTop="@dimen/download_progress_top_margin"
                 android:max="100"
                 android:visibility="gone" />
+
+            <LinearLayout
+                android:id="@+id/progressDetail"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/download_progress_detail_top_margin"
+                android:orientation="horizontal"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/tvProgressSize"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/main_progress_size_unknown"
+                    android:textColor="@color/dy_text_muted"
+                    android:textSize="@dimen/download_progress_detail_text_size" />
+
+                <TextView
+                    android:id="@+id/tvProgressSpeed"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:text="@string/main_progress_speed_unknown"
+                    android:textColor="@color/dy_text_muted"
+                    android:textSize="@dimen/download_progress_detail_text_size" />
+            </LinearLayout>
 
             <TextView
                 android:id="@+id/tvStatus"
