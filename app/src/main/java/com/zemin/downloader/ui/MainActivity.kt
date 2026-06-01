@@ -23,6 +23,7 @@ import com.zemin.downloader.common.core.currentDownloadType
 import com.zemin.downloader.common.core.currentTitle
 import com.zemin.downloader.common.util.toast
 import com.zemin.downloader.databinding.ActivityMainBinding
+import com.zemin.downloader.impl.BridgeAbilityConfig
 import com.zemin.downloader.impl.DownloadType
 import com.zemin.downloader.ui.util.extractSharedText
 import com.zemin.downloader.update.UpdateManager
@@ -75,7 +76,8 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
 
     private fun startDownload(shareText: String) {
         if (LoginModule.needLogin) {
-            val loggedIn = StoreModule.loggedIn()
+            val loggedIn = LoginModule.isLoggedIn(StoreModule.getCookieString().orEmpty())
+
             if (!loggedIn) {
                 showError(getString(R.string.main_toast_need_login, currentTitle))
                 loginLauncher.launch(Intent(this, LoginActivity::class.java))
@@ -174,7 +176,8 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
 
         PopupMenu(this, anchor).apply {
             menu.setGroupCheckable(0, true, true)
-            BridgeAbilityManager.getAllBridgeAbility().forEachIndexed { index, downloadType ->
+            val allAbility = BridgeAbilityConfig.getAllAbility()
+            allAbility.forEachIndexed { index, downloadType ->
                 menu.add(
                     0,
                     index,
@@ -183,7 +186,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
                 ).isChecked = downloadType == currentDownloadType
             }
             setOnMenuItemClickListener { item ->
-                val selectedType = DownloadType.entries[item.itemId]
+                val selectedType = allAbility[item.itemId]
                 updateDownloadType(selectedType)
                 true
             }

@@ -9,6 +9,8 @@ import com.zemin.downloader.impl.DownloadType
  * @desc:
  */
 class XhsBridgeAbility : BaseBridgeAbility() {
+    override val TAG = "XhsBridgeAbility"
+
     override val downloadType: DownloadType = DownloadType.XIAO_HONG_SHU
 
     override val loginModule = XhsLoginModule()

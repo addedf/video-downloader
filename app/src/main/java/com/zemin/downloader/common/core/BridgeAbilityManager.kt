@@ -30,10 +30,6 @@ object BridgeAbilityManager {
         setCurrentAbility(downloadType)
     }
 
-    fun getAllBridgeAbility(): List<DownloadType> {
-        return DownloadType.entries
-    }
-
     private suspend fun setCurrentAbility(
         downloadType: DownloadType, isSaveStorage: Boolean = true
     ) = abilityMutex.withLock {
@@ -43,15 +39,15 @@ object BridgeAbilityManager {
         }
 
         Log.d(TAG, "setCurrentAbility: downloadType = $downloadType")
-        currentAbility = getOrCreateBridgeAbility(downloadType)
+        val ability = getOrCreateBridgeAbility(downloadType).also { currentAbility = it }
         if (isSaveStorage) {
             LocalStorage.saveAbility(downloadType)
         }
         _downloadTypeFlow.value = downloadType
 
         // 初始化
-        if (!currentAbility.initialized) {
-            val initSuccess = currentAbility.init()
+        if (!ability.initialized) {
+            val initSuccess = ability.init()
             Log.d(TAG, "setCurrentAbility: initSuccess = $initSuccess")
         }
     }

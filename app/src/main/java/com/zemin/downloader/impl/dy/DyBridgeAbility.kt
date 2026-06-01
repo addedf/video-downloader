@@ -8,6 +8,8 @@ import com.zemin.downloader.impl.DownloadType
  * @desc:
  */
 class DyBridgeAbility : BaseBridgeAbility() {
+    override val TAG = "DyBridgeAbility"
+
     override val downloadType: DownloadType = DownloadType.DOU_YIN
 
     override val loginModule = DyLoginModule()
