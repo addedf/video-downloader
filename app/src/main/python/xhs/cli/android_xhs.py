@@ -1,17 +1,19 @@
 from __future__ import annotations
 
 import json
-from asyncio import Event, Queue
+from asyncio import Event, Queue, gather
 from datetime import datetime
 from pathlib import Path
 from re import DOTALL, compile
+from time import perf_counter
 from types import SimpleNamespace
 from urllib.parse import urlparse
 
-from httpx import HTTPError
+from httpx import HTTPError, Timeout
 from yaml import safe_load
 
 from common.android_flow_logger import AndroidFlowLogger, url_preview
+from common.android_utils import elapsed_ms, host, speed_kbps
 from .xhs_source_bootstrap import install_module_exports
 
 install_module_exports()
@@ -170,6 +172,12 @@ class AndroidXHS:
     SHORT_URL_CACHE_LIMIT = 64
     SHORT_URL_HEAD_TIMEOUT_SECONDS = 3.0
     DEFAULT_SCHEME = "https://"
+    VIDEO_CDN_PROBE_BYTES = 256 * 1024
+    VIDEO_CDN_PROBE_CONNECT_TIMEOUT_SECONDS = 2.0
+    VIDEO_CDN_PROBE_READ_TIMEOUT_SECONDS = 4.0
+    VIDEO_CDN_PROBE_TOTAL_TIMEOUT_SECONDS = 6.0
+    VIDEO_CDN_PROBE_MAX_CANDIDATES = 4
+    VIDEO_CDN_PROBE_SUCCESS_STATUS = {200, 206}
 
     def __init__(
             self,
@@ -481,6 +489,7 @@ class AndroidXHS:
         if data["作品类型"] == _("视频"):
             with self._stage("extract_video_urls", work_id=id_):
                 self.__extract_video(data, namespace)
+            await self._optimize_video_download_url(data, namespace, id_)
         elif data["作品类型"] in {_("图文"), _("图集")}:
             with self._stage("extract_image_urls", work_id=id_):
                 self.__extract_image(data, namespace)
@@ -539,6 +548,188 @@ class AndroidXHS:
 
     def __generate_data_object(self, html: str) -> Namespace:
         return Namespace(self.convert.run(html))
+
+    async def _optimize_video_download_url(
+            self,
+            container: dict,
+            namespace: Namespace,
+            work_id: str,
+    ) -> None:
+        urls = container.get("下载地址") or []
+        candidates = self._collect_video_cdn_candidates(namespace, urls)
+        if len(candidates) <= 1:
+            return
+        selected = await self._select_fastest_video_cdn(candidates, work_id)
+        if selected:
+            container["下载地址"] = [selected]
+
+    def _collect_video_cdn_candidates(
+            self,
+            namespace: Namespace,
+            default_urls: list[str],
+    ) -> list[str]:
+        candidates = []
+        candidates.extend(default_urls)
+        candidates.extend(self.video.generate_video_link(namespace))
+
+        if stream := self._select_preferred_video_stream(namespace):
+            candidates.append(getattr(stream, "masterUrl", ""))
+            backup_urls = getattr(stream, "backupUrls", []) or []
+            if isinstance(backup_urls, str):
+                candidates.append(backup_urls)
+            else:
+                candidates.extend(backup_urls)
+
+        return self._deduplicate_video_urls(
+            self._format_video_url(candidate) for candidate in candidates
+        )[:self.VIDEO_CDN_PROBE_MAX_CANDIDATES]
+
+    def _select_preferred_video_stream(self, namespace: Namespace):
+        items = list(self.video.get_video_items(namespace))
+        if not items:
+            return None
+        match self.manager.video_preference:
+            case "resolution":
+                items.sort(key=lambda item: getattr(item, "height", 0) or 0)
+            case "bitrate":
+                items.sort(key=lambda item: getattr(item, "videoBitrate", 0) or 0)
+            case "size":
+                items.sort(key=lambda item: getattr(item, "size", 0) or 0)
+        return items[-1]
+
+    @staticmethod
+    def _format_video_url(url: str) -> str:
+        if not isinstance(url, str) or not url:
+            return ""
+        return Html.format_url(url)
+
+    @staticmethod
+    def _deduplicate_video_urls(urls) -> list[str]:
+        seen = set()
+        result = []
+        for url in urls:
+            if not url or url in seen:
+                continue
+            seen.add(url)
+            result.append(url)
+        return result
+
+    async def _select_fastest_video_cdn(
+            self,
+            candidates: list[str],
+            work_id: str,
+    ) -> str:
+        results = await gather(
+            *(self._probe_video_cdn_candidate(url, work_id) for url in candidates)
+        )
+        available = [
+            result for result in results
+            if result["status"] in self.VIDEO_CDN_PROBE_SUCCESS_STATUS
+            and result["bytes"] > 0
+        ]
+        if not available:
+            self._log_video_cdn_probe(
+                "xhs_cdn_probe.all_failed",
+                work_id=work_id,
+                candidates=len(candidates),
+                fallback_host=host(candidates[0]),
+            )
+            return candidates[0]
+
+        selected = max(available, key=lambda item: item["speed_kbps"])
+        self._log_video_cdn_probe(
+            "xhs_cdn_probe.selected",
+            work_id=work_id,
+            host=host(selected["url"]),
+            bytes=selected["bytes"],
+            duration_ms=selected["duration_ms"],
+            speed_kbps=selected["speed_kbps"],
+            candidates=len(candidates),
+        )
+        return selected["url"]
+
+    async def _probe_video_cdn_candidate(
+            self,
+            url: str,
+            work_id: str,
+    ) -> dict:
+        started_at = perf_counter()
+        status = 0
+        bytes_read = 0
+        headers = self.manager.blank_headers.copy()
+        headers["Range"] = f"bytes=0-{self.VIDEO_CDN_PROBE_BYTES - 1}"
+        try:
+            async with self.manager.download_client.stream(
+                    "GET",
+                    url,
+                    headers=headers,
+                    timeout=Timeout(
+                        self.VIDEO_CDN_PROBE_TOTAL_TIMEOUT_SECONDS,
+                        connect=self.VIDEO_CDN_PROBE_CONNECT_TIMEOUT_SECONDS,
+                        read=self.VIDEO_CDN_PROBE_READ_TIMEOUT_SECONDS,
+                    ),
+            ) as response:
+                status = response.status_code
+                if status not in self.VIDEO_CDN_PROBE_SUCCESS_STATUS:
+                    result = self._video_cdn_probe_result(url, status, bytes_read, started_at)
+                    self._log_video_cdn_probe_result("xhs_cdn_probe.result", result, work_id)
+                    return result
+                async for chunk in response.aiter_bytes():
+                    bytes_read += len(chunk)
+                    if bytes_read >= self.VIDEO_CDN_PROBE_BYTES:
+                        break
+            result = self._video_cdn_probe_result(url, status, bytes_read, started_at)
+            self._log_video_cdn_probe_result("xhs_cdn_probe.result", result, work_id)
+            return result
+        except Exception as exc:
+            result = self._video_cdn_probe_result(
+                url,
+                status,
+                bytes_read,
+                started_at,
+                type(exc).__name__,
+            )
+            self._log_video_cdn_probe_result("xhs_cdn_probe.failed", result, work_id)
+            return result
+
+    @staticmethod
+    def _video_cdn_probe_result(
+            url: str,
+            status: int,
+            bytes_read: int,
+            started_at: float,
+            error: str = "",
+    ) -> dict:
+        duration_ms = max(1, elapsed_ms(started_at))
+        return {
+            "url": url,
+            "status": status,
+            "bytes": bytes_read,
+            "duration_ms": duration_ms,
+            "speed_kbps": speed_kbps(bytes_read, duration_ms),
+            "error": error,
+        }
+
+    def _log_video_cdn_probe_result(
+            self,
+            event: str,
+            result: dict,
+            work_id: str,
+    ) -> None:
+        self._log_video_cdn_probe(
+            event,
+            work_id=work_id,
+            host=host(result["url"]),
+            status=result["status"],
+            bytes=result["bytes"],
+            duration_ms=result["duration_ms"],
+            speed_kbps=result["speed_kbps"],
+            error=result["error"],
+        )
+
+    def _log_video_cdn_probe(self, event: str, **fields) -> None:
+        if self.flow is not None:
+            self.flow.info(event, **fields)
 
     def __naming_rules(self, data: dict) -> str:
         keys = self.manager.name_format.split()

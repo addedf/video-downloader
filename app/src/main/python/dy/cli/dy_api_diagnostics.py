@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import time
@@ -10,13 +11,17 @@ from core.downloader_base import BaseDownloader
 from storage import FileManager
 from utils.logger import setup_logger
 
-logger = setup_logger("AndroidApiDiagnostics", console_level=logging.INFO)
+logger = setup_logger("DyApiDiagnostics", console_level=logging.INFO)
 
 _PATCHED = False
 _ANDROID_DOWNLOAD_CHUNK_SIZE = 1024 * 1024
 _ANDROID_TOTAL_TIMEOUT_SECONDS = 180
 _ANDROID_CONNECT_TIMEOUT_SECONDS = 10
 _ANDROID_IDLE_READ_TIMEOUT_SECONDS = 30
+_ANDROID_CDN_PROBE_BYTES = 256 * 1024
+_ANDROID_CDN_PROBE_CONNECT_TIMEOUT_SECONDS = 2
+_ANDROID_CDN_PROBE_READ_TIMEOUT_SECONDS = 4
+_ANDROID_CDN_PROBE_TOTAL_TIMEOUT_SECONDS = 6
 _DOWNLOAD_METRICS = []
 _API_METRICS = []
 
@@ -213,6 +218,8 @@ def _patch_force_download() -> None:
 def _patch_asset_downloads() -> None:
     original_download_aweme_assets = BaseDownloader._download_aweme_assets
     original_download_with_retry = BaseDownloader._download_with_retry
+    original_build_no_watermark_url = BaseDownloader._build_no_watermark_url
+
     async def download_aweme_assets(
         self: BaseDownloader,
         aweme_data: Dict[str, Any],
@@ -232,13 +239,22 @@ def _patch_asset_downloads() -> None:
             author_name,
         )
         setattr(self.file_manager, "_android_progress_reporter", self.progress_reporter)
-        ok = await original_download_aweme_assets(
-            self,
-            aweme_data,
-            author_name,
-            mode,
-            db_batch=db_batch,
+        selected_cdn = await _select_fastest_no_watermark_candidate(
+            self, aweme_data, original_build_no_watermark_url
         )
+        original_instance_builder = getattr(self, "_build_no_watermark_url")
+        if selected_cdn is not None:
+            self._build_no_watermark_url = lambda _aweme_data: selected_cdn
+        try:
+            ok = await original_download_aweme_assets(
+                self,
+                aweme_data,
+                author_name,
+                mode,
+                db_batch=db_batch,
+            )
+        finally:
+            self._build_no_watermark_url = original_instance_builder
         logger.info(
             "asset.aweme.done aweme_id=%s media_type=%s duration_ms=%s ok=%s",
             aweme_id,
@@ -497,6 +513,155 @@ def _file_size(path) -> int:
         return int(path.stat().st_size)
     except Exception:
         return 0
+
+
+def _collect_no_watermark_candidates(
+    downloader: BaseDownloader,
+    aweme_data: Dict[str, Any],
+) -> list:
+    video = aweme_data.get("video", {})
+    play_addr = downloader._pick_highest_quality_play_addr(video) or video.get("play_addr", {})
+    url_candidates = [candidate for candidate in (play_addr.get("url_list") or []) if candidate]
+    url_candidates.sort(key=lambda url: 0 if "watermark=0" in url else 1)
+
+    candidates = []
+    for candidate in url_candidates:
+        if downloader._is_watermarked_media_url(candidate):
+            continue
+        parsed = host(candidate)
+        headers = downloader._download_headers()
+        if parsed.endswith("douyin.com") and "X-Bogus=" not in candidate:
+            signed_url, user_agent = downloader.api_client.sign_url(candidate)
+            candidates.append((signed_url, downloader._download_headers(user_agent=user_agent)))
+        else:
+            candidates.append((candidate, headers))
+    return candidates
+
+
+def _deduplicate_candidates(candidates: list) -> list:
+    deduped = []
+    seen = set()
+    for candidate in candidates:
+        if not candidate:
+            continue
+        url, headers = candidate
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        deduped.append((url, headers))
+    return deduped
+
+
+async def _select_fastest_no_watermark_candidate(
+    downloader: BaseDownloader,
+    aweme_data: Dict[str, Any],
+    original_build_no_watermark_url,
+):
+    selected = original_build_no_watermark_url(downloader, aweme_data)
+    candidates = _collect_no_watermark_candidates(downloader, aweme_data)
+    if selected is not None:
+        candidates.insert(0, selected)
+    candidates = _deduplicate_candidates(candidates)
+    if len(candidates) <= 1:
+        return selected
+
+    probe_results = await _probe_candidates(downloader, candidates)
+    successful_results = [result for result in probe_results if result.get("ok")]
+    if not successful_results:
+        logger.info(
+            "cdn_probe.all_failed count=%s fallback_host=%s",
+            len(candidates),
+            host(candidates[0][0]),
+        )
+        return candidates[0]
+
+    best = max(successful_results, key=lambda item: item.get("score", 0))
+    logger.info(
+        "cdn_probe.selected host=%s bytes=%s duration_ms=%s speed_kbps=%s candidates=%s",
+        host(best["url"]),
+        best.get("bytes", 0),
+        best.get("duration_ms", 0),
+        speed_kbps(best.get("bytes", 0), best.get("duration_ms", 1)),
+        len(candidates),
+    )
+    return best["url"], best["headers"]
+
+
+async def _probe_candidates(downloader: BaseDownloader, candidates: list) -> list:
+    session = await downloader.api_client.get_session()
+    tasks = [_probe_candidate(downloader, session, candidate) for candidate in candidates]
+    return await asyncio.gather(*tasks, return_exceptions=False)
+
+
+async def _probe_candidate(downloader: BaseDownloader, session, candidate: tuple) -> Dict[str, Any]:
+    url, headers = candidate
+    probe_headers = dict(headers or {})
+    probe_headers["Range"] = f"bytes=0-{_ANDROID_CDN_PROBE_BYTES - 1}"
+    started_at = time.perf_counter()
+    bytes_read = 0
+    status = 0
+    try:
+        import aiohttp
+
+        async with session.get(
+            url,
+            headers=probe_headers,
+            proxy=getattr(downloader.api_client, "proxy", None),
+            timeout=aiohttp.ClientTimeout(
+                total=_ANDROID_CDN_PROBE_TOTAL_TIMEOUT_SECONDS,
+                sock_connect=_ANDROID_CDN_PROBE_CONNECT_TIMEOUT_SECONDS,
+                sock_read=_ANDROID_CDN_PROBE_READ_TIMEOUT_SECONDS,
+            ),
+        ) as response:
+            status = int(response.status or 0)
+            if status not in {200, 206}:
+                return _cdn_probe_result(url, headers, status, bytes_read, started_at)
+            async for chunk in response.content.iter_chunked(64 * 1024):
+                bytes_read += len(chunk)
+                if bytes_read >= _ANDROID_CDN_PROBE_BYTES:
+                    break
+        result = _cdn_probe_result(url, headers, status, bytes_read, started_at)
+        logger.info(
+            "cdn_probe.result host=%s status=%s bytes=%s duration_ms=%s speed_kbps=%s",
+            host(url),
+            status,
+            bytes_read,
+            result["duration_ms"],
+            speed_kbps(bytes_read, result["duration_ms"]),
+        )
+        return result
+    except Exception as exc:
+        result = _cdn_probe_result(url, headers, status, bytes_read, started_at, type(exc).__name__)
+        logger.info(
+            "cdn_probe.failed host=%s status=%s duration_ms=%s error=%s",
+            host(url),
+            status,
+            result["duration_ms"],
+            result["error"],
+        )
+        return result
+
+
+def _cdn_probe_result(
+    url: str,
+    headers: Dict[str, str],
+    status: int,
+    bytes_read: int,
+    started_at: float,
+    error: str = "",
+) -> Dict[str, Any]:
+    duration_ms = max(1, elapsed_ms(started_at))
+    return {
+        "url": url,
+        "headers": headers,
+        "status": status,
+        "bytes": int(bytes_read or 0),
+        "duration_ms": duration_ms,
+        "ok": status in {200, 206} and bytes_read > 0,
+        "score": (bytes_read or 0) / max(duration_ms / 1000, 0.001),
+        "error": error,
+    }
+
 
 def _report_file_progress(
     reporter,
