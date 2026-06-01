@@ -1,26 +1,27 @@
 from __future__ import annotations
 
+import json
 from asyncio import Event, Queue
 from datetime import datetime
 from pathlib import Path
-from re import compile
+from re import DOTALL, compile
 from types import SimpleNamespace
 from urllib.parse import urlparse
 
 from httpx import HTTPError
+from yaml import safe_load
 
-from .android_flow_logger import AndroidFlowLogger, url_preview
-from .source_bootstrap import install_module_exports
+from common.android_flow_logger import AndroidFlowLogger, url_preview
+from .xhs_source_bootstrap import install_module_exports
 
 install_module_exports()
 
-from .android_xhs_util import AndroidConverter, Print
 from source.application.download import Download
 from source.application.explore import Explore
 from source.application.image import Image
 from source.application.request import Html
 from source.application.video import Video
-from source.expansion import Cleaner, Namespace, beautify_string
+from source.expansion import Cleaner, Converter, Namespace, beautify_string
 from source.module import (
     DataRecorder,
     ERROR,
@@ -33,9 +34,63 @@ from source.module import (
     WARNING,
     logging,
 )
+from source.module.tools import print as rich_print
 from source.translation import _, switch_language
 
 __all__ = ["AndroidXHS"]
+
+
+class AndroidConverter(Converter):
+    INITIAL_STATE_PREFIX = "window.__INITIAL_STATE__="
+    NULL_CHAR = "\x00"
+    BOM_CHARS = "\ufeff\ufffe"
+    INITIAL_STATE = compile(
+        r"window\.__INITIAL_STATE__\s*=\s*(.*?)(?:</script>|<script|\Z)",
+        DOTALL,
+    )
+
+    def _extract_object(self, html: str) -> str:
+        html = self._clean_text(html)
+        if not html:
+            return ""
+        if match := self.INITIAL_STATE.search(html):
+            return f"{self.INITIAL_STATE_PREFIX}{match.group(1).strip()}"
+        try:
+            return super()._extract_object(html)
+        except Exception:
+            return ""
+
+    @classmethod
+    def _convert_object(cls, text: str) -> dict:
+        cleaned = cls._clean_text(text)
+        if cleaned.startswith(cls.INITIAL_STATE_PREFIX):
+            cleaned = cleaned.removeprefix(cls.INITIAL_STATE_PREFIX)
+        cleaned = cls.YAML_ILLEGAL.sub("", cleaned).strip().removesuffix(";")
+        if not cleaned:
+            return {}
+        try:
+            return json.loads(cleaned)
+        except json.JSONDecodeError:
+            pass
+        try:
+            return safe_load(cleaned) or {}
+        except Exception:
+            return {}
+
+    @staticmethod
+    def _clean_text(value: str) -> str:
+        return str(value or "").replace(
+            AndroidConverter.NULL_CHAR,
+            "",
+        ).lstrip(AndroidConverter.BOM_CHARS)
+
+
+class Print:
+    def __init__(self, func=rich_print):
+        self.func = func
+
+    def __call__(self):
+        return self.func
 
 
 class AndroidHtml(Html):

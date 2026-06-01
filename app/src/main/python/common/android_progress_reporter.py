@@ -1,15 +1,13 @@
 import time
 from typing import Optional
 
-from auth import CookieManager
-from config import ConfigLoader
-from storage import Database
+MIN_PROGRESS_INTERVAL_SECONDS = 0.3
+MIN_PROGRESS_PERCENT_DELTA = 1
+PROGRESS_MIN_PERCENT = 0
+PROGRESS_MAX_PERCENT = 100
 
 
 class AndroidProgressReporter:
-    _MIN_PROGRESS_INTERVAL_SECONDS = 0.3
-    _MIN_PROGRESS_PERCENT_DELTA = 1
-
     def __init__(self, progress_callback=None):
         self.progress_callback = progress_callback
         self.step = ""
@@ -67,22 +65,15 @@ class AndroidProgressReporter:
     @classmethod
     def _calculate_percent(cls, downloaded_bytes: int, total_bytes: int) -> int:
         if total_bytes <= 0:
-            return 0
-        return max(0, min(100, int(downloaded_bytes * 100 / total_bytes)))
+            return PROGRESS_MIN_PERCENT
+        percent = int(downloaded_bytes * PROGRESS_MAX_PERCENT / total_bytes)
+        return max(PROGRESS_MIN_PERCENT, min(PROGRESS_MAX_PERCENT, percent))
 
     def _should_report(self, percent: int, total_bytes: int) -> bool:
         now = time.monotonic()
         if total_bytes <= 0:
-            return now - self._last_reported_at >= self._MIN_PROGRESS_INTERVAL_SECONDS
+            return now - self._last_reported_at >= MIN_PROGRESS_INTERVAL_SECONDS
         return (
-            percent - self._last_percent >= self._MIN_PROGRESS_PERCENT_DELTA
-            or now - self._last_reported_at >= self._MIN_PROGRESS_INTERVAL_SECONDS
+            percent - self._last_percent >= MIN_PROGRESS_PERCENT_DELTA
+            or now - self._last_reported_at >= MIN_PROGRESS_INTERVAL_SECONDS
         )
-
-class AndroidGlobalConfig:
-    def __init__(self):
-        self.config_loader: Optional[ConfigLoader] = None
-        self.cookie_manager: Optional[CookieManager] = None
-        self.database: Optional[Database] = None
-        self.androidProgressReporter: AndroidProgressReporter = AndroidProgressReporter()
-

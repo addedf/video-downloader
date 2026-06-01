@@ -1,6 +1,5 @@
 import asyncio
 import json
-import re
 import sys
 import time
 import traceback
@@ -11,13 +10,19 @@ _DY_ROOT = Path(__file__).resolve().parents[1]
 if str(_DY_ROOT) not in sys.path:
     sys.path.insert(0, str(_DY_ROOT))
 
-from .android_api_diagnostics import (
+from .dy_api_diagnostics import (
     consume_android_metrics,
     install_android_api_diagnostics,
     reset_android_metrics,
 )
-from .android_flow_logger import AndroidFlowLogger, new_flow_logger, url_preview
-from .android_progress_reporter import AndroidProgressReporter, AndroidGlobalConfig
+from common.android_flow_logger import AndroidFlowLogger, new_flow_logger, url_preview
+from common.android_progress_reporter import AndroidProgressReporter
+from common.android_utils import (
+    TMP_SUFFIX,
+    build_error_response,
+    changed_files_since,
+    extract_first_url,
+)
 from auth import CookieManager
 from config import ConfigLoader
 from control import QueueManager, RateLimiter, RetryHandler
@@ -26,12 +31,21 @@ from storage import Database, FileManager
 from utils.cookie_utils import parse_cookie_header, sanitize_cookies
 from utils.validators import is_short_url, normalize_short_url
 
-_android_global_config = AndroidGlobalConfig()
-
 _ANDROID_USE_DATABASE = False
 _ANDROID_THREAD_COUNT = 4
 _ANDROID_RATE_LIMIT = 4.0
 _ANDROID_RETRY_TIMES = 2
+
+
+class AndroidGlobalConfig:
+    def __init__(self):
+        self.config_loader: Optional[ConfigLoader] = None
+        self.cookie_manager: Optional[CookieManager] = None
+        self.database: Optional[Database] = None
+        self.androidProgressReporter: AndroidProgressReporter = AndroidProgressReporter()
+
+
+_android_global_config = AndroidGlobalConfig()
 
 
 def warm_up(app_data_dir: str, output_dir: str, cookie_header: str) -> str:
@@ -243,7 +257,7 @@ async def _resolve_input_url(
         api_client: DouyinAPIClient,
         flow: Optional[AndroidFlowLogger] = None,
 ) -> str:
-    explicit_url = _extract_first_url(input_text) or input_text.strip()
+    explicit_url = extract_first_url(input_text) or input_text.strip()
     if is_short_url(explicit_url):
         if flow is not None:
             flow.info("short_url.detected", url=url_preview(explicit_url))
@@ -256,27 +270,8 @@ async def _resolve_input_url(
             flow.warning("short_url.resolve_empty", url=url_preview(explicit_url))
     return explicit_url
 
-
-def _extract_first_url(text: str) -> Optional[str]:
-    match = re.search(r"https?://[^\s\"'<>]+", text or "")
-    if not match:
-        return None
-    return match.group(0).rstrip(".,;，。；)")
-
-
 def _changed_files_since(root: Path, started_at: float) -> List[str]:
-    changed: List[str] = []
-    for path in root.rglob("*"):
-        if not path.is_file():
-            continue
-        if path.suffix == ".tmp":
-            continue
-        try:
-            if path.stat().st_mtime >= started_at:
-                changed.append(str(path))
-        except OSError:
-            pass
-    return sorted(changed)
+    return changed_files_since(root, started_at, ignored_suffixes={TMP_SUFFIX})
 
 
 def _summary_message(result: Any, files: List[str]) -> str:
@@ -298,17 +293,9 @@ def _error(
         output_root: Optional[Path] = None,
         timings: Optional[Dict[str, int]] = None,
 ) -> Dict[str, Any]:
-    return {
-        "ok": False,
-        "error": message,
-        "message": message,
-        "total": 0,
-        "success": 0,
-        "failed": 1,
-        "skipped": 0,
-        "output_dir": str(output_root) if output_root is not None else "",
-        "files": [],
-        "timings": timings or {},
-        "download_metrics": [],
-        "api_metrics": [],
-    }
+    return build_error_response(
+        message,
+        output_root=output_root,
+        timings=timings,
+        total=0,
+    )

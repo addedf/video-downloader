@@ -4,15 +4,20 @@ import time
 from contextlib import contextmanager
 from typing import Any, Dict, Iterator, Optional
 
+DEFAULT_LOGGER_NAME = "AndroidFlow"
+DEFAULT_PREVIEW_LIMIT = 120
+MAX_LOG_VALUE_LENGTH = 180
+TRUNCATION_SUFFIX = "..."
+
 
 class AndroidFlowLogger:
-    def __init__(self, name: str = "DyAndroidFlow"):
-        self.logger = logging.getLogger(name)
-        self.logger.setLevel(logging.INFO)
-        self.logger.propagate = False
+    def __init__(self, name: str = DEFAULT_LOGGER_NAME) -> None:
         self.timings: Dict[str, int] = {}
         self._started_at = time.perf_counter()
-        if not self.logger.handlers:
+        self._logger = logging.getLogger(name)
+        self._logger.setLevel(logging.INFO)
+        self._logger.propagate = False
+        if not self._logger.handlers:
             handler = logging.StreamHandler(sys.stderr)
             handler.setLevel(logging.INFO)
             handler.setFormatter(
@@ -21,16 +26,16 @@ class AndroidFlowLogger:
                     datefmt="%Y-%m-%d %H:%M:%S",
                 )
             )
-            self.logger.addHandler(handler)
+            self._logger.addHandler(handler)
 
     def info(self, event: str, **fields: Any) -> None:
-        self.logger.info("%s%s", event, self._format_fields(fields))
+        self._logger.info("%s%s", event, self._format_fields(fields))
 
     def warning(self, event: str, **fields: Any) -> None:
-        self.logger.warning("%s%s", event, self._format_fields(fields))
+        self._logger.warning("%s%s", event, self._format_fields(fields))
 
     def error(self, event: str, **fields: Any) -> None:
-        self.logger.error("%s%s", event, self._format_fields(fields))
+        self._logger.error("%s%s", event, self._format_fields(fields))
 
     @contextmanager
     def stage(self, name: str, **fields: Any) -> Iterator[None]:
@@ -75,17 +80,17 @@ class AndroidFlowLogger:
     @staticmethod
     def _safe_value(value: Any) -> str:
         text = str(value).replace("\n", "\\n").replace("\r", "\\r")
-        if len(text) > 180:
-            return text[:177] + "..."
+        if len(text) > MAX_LOG_VALUE_LENGTH:
+            return text[: MAX_LOG_VALUE_LENGTH - len(TRUNCATION_SUFFIX)] + TRUNCATION_SUFFIX
         return text
 
 
-def new_flow_logger() -> AndroidFlowLogger:
-    return AndroidFlowLogger()
+def new_flow_logger(name: str = "DyAndroidFlow") -> AndroidFlowLogger:
+    return AndroidFlowLogger(name)
 
 
-def url_preview(value: Optional[str]) -> str:
-    text = str(value or "").strip()
-    if len(text) <= 120:
+def url_preview(value: Optional[str], limit: int = DEFAULT_PREVIEW_LIMIT) -> str:
+    text = str(value or "").replace("\n", " ").strip()
+    if len(text) <= limit:
         return text
-    return text[:117] + "..."
+    return text[: max(0, limit - len(TRUNCATION_SUFFIX))] + TRUNCATION_SUFFIX

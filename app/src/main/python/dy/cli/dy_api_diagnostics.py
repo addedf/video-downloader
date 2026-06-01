@@ -1,10 +1,9 @@
-import asyncio
 import logging
 import os
 import time
 from typing import Any, Dict, Optional
-from urllib.parse import urlparse
 
+from common.android_utils import elapsed_ms, host, speed_bytes_per_second, speed_kbps
 from auth import MsTokenManager
 from core import DouyinAPIClient
 from core.downloader_base import BaseDownloader
@@ -57,7 +56,7 @@ def _patch_ms_token_manager() -> None:
         if current:
             logger.info(
                 "ms_token.use_cookie duration_ms=%s length=%s",
-                _elapsed_ms(started_at),
+                elapsed_ms(started_at),
                 len(current),
             )
             return current
@@ -65,7 +64,7 @@ def _patch_ms_token_manager() -> None:
         token = self.gen_false_ms_token()
         logger.info(
             "ms_token.use_fallback reason=android_skip_github duration_ms=%s length=%s",
-            _elapsed_ms(started_at),
+            elapsed_ms(started_at),
             len(token),
         )
         return token
@@ -75,7 +74,7 @@ def _patch_ms_token_manager() -> None:
         token = original_gen_real_ms_token(self)
         logger.info(
             "ms_token.real.done duration_ms=%s ok=%s",
-            _elapsed_ms(started_at),
+            elapsed_ms(started_at),
             bool(token),
         )
         return token
@@ -85,7 +84,7 @@ def _patch_ms_token_manager() -> None:
         conf = original_load_conf(self)
         logger.info(
             "ms_token.github_conf.done duration_ms=%s ok=%s",
-            _elapsed_ms(started_at),
+            elapsed_ms(started_at),
             bool(conf),
         )
         return conf
@@ -106,7 +105,7 @@ def _patch_api_client() -> None:
         token = await original_ensure_ms_token(self)
         logger.info(
             "api.ms_token.ready duration_ms=%s length=%s",
-            _elapsed_ms(started_at),
+            elapsed_ms(started_at),
             len(token or ""),
         )
         return token
@@ -114,7 +113,7 @@ def _patch_api_client() -> None:
     async def default_query(self: DouyinAPIClient) -> Dict[str, Any]:
         started_at = time.perf_counter()
         query = await original_default_query(self)
-        logger.info("api.default_query.done duration_ms=%s", _elapsed_ms(started_at))
+        logger.info("api.default_query.done duration_ms=%s", elapsed_ms(started_at))
         return query
 
     async def request_json(
@@ -139,7 +138,7 @@ def _patch_api_client() -> None:
             suppress_error=suppress_error,
             max_retries=max_retries,
         )
-        duration_ms = _elapsed_ms(started_at)
+        duration_ms = elapsed_ms(started_at)
         logger.info(
             "api.request.done path=%s aid=%s duration_ms=%s ok=%s",
             path,
@@ -176,7 +175,7 @@ def _patch_api_client() -> None:
             aweme_id,
             suppress_error=suppress_error,
         )
-        duration_ms = _elapsed_ms(started_at)
+        duration_ms = elapsed_ms(started_at)
         logger.info(
             "video_detail.done aweme_id=%s duration_ms=%s ok=%s",
             aweme_id,
@@ -244,7 +243,7 @@ def _patch_asset_downloads() -> None:
             "asset.aweme.done aweme_id=%s media_type=%s duration_ms=%s ok=%s",
             aweme_id,
             media_type,
-            _elapsed_ms(started_at),
+            elapsed_ms(started_at),
             ok,
         )
         return ok
@@ -264,7 +263,7 @@ def _patch_asset_downloads() -> None:
         logger.info(
             "asset.retry.begin file=%s host=%s optional=%s",
             getattr(save_path, "name", save_path),
-            _host(url),
+            host(url),
             optional,
         )
         result = await original_download_with_retry(
@@ -280,8 +279,8 @@ def _patch_asset_downloads() -> None:
         logger.info(
             "asset.retry.done file=%s host=%s duration_ms=%s ok=%s",
             getattr(save_path, "name", save_path),
-            _host(url),
-            _elapsed_ms(started_at),
+            host(url),
+            elapsed_ms(started_at),
             bool(result),
         )
         return result
@@ -307,7 +306,7 @@ def _patch_asset_downloads() -> None:
         logger.info(
             "asset.file.begin file=%s host=%s suffix=%s return_path=%s",
             getattr(save_path, "name", save_path),
-            _host(url),
+            host(url),
             getattr(save_path, "suffix", ""),
             return_saved_path,
         )
@@ -343,16 +342,16 @@ def _patch_asset_downloads() -> None:
                     "asset.file.response file=%s status=%s final_host=%s expected_bytes=%s response_ms=%s",
                     getattr(save_path, "name", save_path),
                     response.status,
-                    _host(final_url),
+                    host(final_url),
                     expected_size or 0,
-                    _elapsed_ms(started_at),
+                    elapsed_ms(started_at),
                 )
                 if response.status != 200:
-                    duration_ms = _elapsed_ms(started_at)
+                    duration_ms = elapsed_ms(started_at)
                     logger.info(
                         "asset.file.done file=%s host=%s duration_ms=%s ok=False status=%s bytes=0",
                         getattr(save_path, "name", save_path),
-                        _host(url),
+                        host(url),
                         duration_ms,
                         response.status,
                     )
@@ -361,8 +360,8 @@ def _patch_asset_downloads() -> None:
                             "file_name": getattr(save_path, "name", str(save_path)),
                             "ok": False,
                             "status": int(response.status or 0),
-                            "host": _host(url),
-                            "final_host": _host(final_url),
+                            "host": host(url),
+                            "final_host": host(final_url),
                             "bytes": 0,
                             "expected_bytes": int(expected_size or 0),
                             "duration_ms": duration_ms,
@@ -382,7 +381,7 @@ def _patch_asset_downloads() -> None:
                 async with aiofiles.open(tmp_path, "wb") as file:
                     async for chunk in response.content.iter_chunked(_ANDROID_DOWNLOAD_CHUNK_SIZE):
                         if first_chunk_ms is None:
-                            first_chunk_ms = _elapsed_ms(started_at)
+                            first_chunk_ms = elapsed_ms(started_at)
                         await file.write(chunk)
                         written += len(chunk)
                         _report_file_progress(
@@ -393,12 +392,12 @@ def _patch_asset_downloads() -> None:
                         )
 
                 if expected_size is not None and written != expected_size:
-                    duration_ms = _elapsed_ms(started_at)
+                    duration_ms = elapsed_ms(started_at)
                     tmp_path.unlink(missing_ok=True)
                     logger.info(
                         "asset.file.done file=%s host=%s duration_ms=%s ok=False bytes=%s expected_bytes=%s first_chunk_ms=%s reason=size_mismatch",
                         getattr(final_path, "name", final_path),
-                        _host(url),
+                        host(url),
                         duration_ms,
                         written,
                         expected_size,
@@ -409,20 +408,20 @@ def _patch_asset_downloads() -> None:
                             "file_name": getattr(final_path, "name", str(final_path)),
                             "ok": False,
                             "status": 200,
-                            "host": _host(url),
-                            "final_host": _host(final_url),
+                            "host": host(url),
+                            "final_host": host(final_url),
                             "bytes": int(written or 0),
                             "expected_bytes": int(expected_size or 0),
                             "duration_ms": duration_ms,
                             "first_chunk_ms": int(first_chunk_ms or 0),
-                            "speed_kbps": _speed_kbps(written, duration_ms),
+                            "speed_kbps": speed_kbps(written, duration_ms),
                             "error": "size_mismatch",
                         }
                     )
                     return False
 
                 os.replace(str(tmp_path), str(final_path))
-                duration_ms = _elapsed_ms(started_at)
+                duration_ms = elapsed_ms(started_at)
                 _report_file_progress(
                     reporter,
                     written,
@@ -433,37 +432,37 @@ def _patch_asset_downloads() -> None:
                 logger.info(
                     "asset.file.done file=%s host=%s final_host=%s duration_ms=%s ok=True bytes=%s expected_bytes=%s first_chunk_ms=%s speed_kbps=%s",
                     getattr(final_path, "name", final_path),
-                    _host(url),
-                    _host(final_url),
+                    host(url),
+                    host(final_url),
                     duration_ms,
                     written,
                     expected_size or 0,
                     first_chunk_ms or 0,
-                    _speed_kbps(written, duration_ms),
+                    speed_kbps(written, duration_ms),
                 )
                 _DOWNLOAD_METRICS.append(
                     {
                         "file_name": getattr(final_path, "name", str(final_path)),
                         "ok": True,
                         "status": 200,
-                        "host": _host(url),
-                        "final_host": _host(final_url),
+                        "host": host(url),
+                        "final_host": host(final_url),
                         "bytes": int(written or 0),
                         "expected_bytes": int(expected_size or 0),
                         "duration_ms": duration_ms,
                         "first_chunk_ms": int(first_chunk_ms or 0),
-                        "speed_kbps": _speed_kbps(written, duration_ms),
+                        "speed_kbps": speed_kbps(written, duration_ms),
                     }
                 )
                 return final_path if return_saved_path else True
         except Exception as exc:
-            duration_ms = _elapsed_ms(started_at)
+            duration_ms = elapsed_ms(started_at)
             tmp_path.unlink(missing_ok=True)
             logger.info(
                 "asset.file.done file=%s host=%s final_host=%s duration_ms=%s ok=False bytes=%s first_chunk_ms=%s error=%s",
                 getattr(final_path, "name", final_path),
-                _host(url),
-                _host(final_url),
+                host(url),
+                host(final_url),
                 duration_ms,
                 written,
                 first_chunk_ms or 0,
@@ -474,13 +473,13 @@ def _patch_asset_downloads() -> None:
                     "file_name": getattr(final_path, "name", str(final_path)),
                     "ok": False,
                     "status": 0,
-                    "host": _host(url),
-                    "final_host": _host(final_url),
+                    "host": host(url),
+                    "final_host": host(final_url),
                     "bytes": int(written or 0),
                     "expected_bytes": 0,
                     "duration_ms": duration_ms,
                     "first_chunk_ms": int(first_chunk_ms or 0),
-                    "speed_kbps": _speed_kbps(written, duration_ms),
+                    "speed_kbps": speed_kbps(written, duration_ms),
                     "error": type(exc).__name__,
                 }
             )
@@ -493,29 +492,11 @@ def _patch_asset_downloads() -> None:
     BaseDownloader._download_with_retry = download_with_retry
     FileManager.download_file = download_file
 
-
-def _host(url: str) -> str:
-    try:
-        return urlparse(str(url)).netloc
-    except Exception:
-        return ""
-
-
 def _file_size(path) -> int:
     try:
         return int(path.stat().st_size)
     except Exception:
         return 0
-
-
-def _speed_kbps(bytes_written: int, duration_ms: int) -> int:
-    return int((bytes_written or 0) / max(duration_ms / 1000, 0.001) / 1024)
-
-
-def _speed_bytes_per_second(bytes_written: int, started_at: float) -> int:
-    elapsed_seconds = max(time.perf_counter() - started_at, 0.001)
-    return int((bytes_written or 0) / elapsed_seconds)
-
 
 def _report_file_progress(
     reporter,
@@ -533,7 +514,7 @@ def _report_file_progress(
     progress(
         int(written or 0),
         int(expected_size or 0),
-        _speed_bytes_per_second(written, started_at),
+        speed_bytes_per_second(written, started_at),
         force=force,
     )
 
@@ -546,7 +527,3 @@ def _detect_media_type_for_log(aweme_data: Dict[str, Any]) -> str:
     ):
         return "gallery"
     return "video"
-
-
-def _elapsed_ms(started_at: float) -> int:
-    return max(0, int((time.perf_counter() - started_at) * 1000))

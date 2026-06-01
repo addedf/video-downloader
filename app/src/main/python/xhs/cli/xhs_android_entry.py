@@ -1,17 +1,22 @@
 import asyncio
 import json
 import os
-import re
 import sys
 import time
 import traceback
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from urllib.parse import urlparse
 
 from .android_xhs import AndroidXHS
-from .android_flow_logger import AndroidFlowLogger, url_preview
-from .android_progress_reporter import AndroidProgressReporter
+from common.android_flow_logger import AndroidFlowLogger, url_preview
+from common.android_progress_reporter import AndroidProgressReporter
+from common.android_utils import (
+    build_error_response,
+    changed_files_since,
+    first_media_host,
+    sum_file_bytes,
+    sum_metric_duration,
+)
 
 _runtime: Dict[str, Any] = {
     "app_root": None,
@@ -30,10 +35,11 @@ _MEDIA_SUFFIXES = {
     ".webp",
 }
 _SHORT_URL_CACHE: Dict[str, str] = {}
+_FLOW_LOGGER_NAME = "XhsAndroidFlow"
 
 
 def warm_up(app_data_dir: str, output_dir: str, cookie_header: str) -> str:
-    flow = AndroidFlowLogger()
+    flow = AndroidFlowLogger(_FLOW_LOGGER_NAME)
     try:
         flow.info("warm_up.begin", app_data_dir=app_data_dir, output_dir=output_dir)
         with flow.stage("prepare_runtime"):
@@ -57,7 +63,7 @@ def refresh_cookies(cookie_header: str) -> str:
 
 
 def download(input_text: str, progress_callback=None) -> str:
-    flow = AndroidFlowLogger()
+    flow = AndroidFlowLogger(_FLOW_LOGGER_NAME)
     try:
         result = asyncio.run(_download_async(input_text, flow, progress_callback))
     except Exception as exc:
@@ -166,20 +172,12 @@ async def _download_async(
 
 
 def _changed_files_since(root: Path, started_at: float) -> tuple[List[str], List[str]]:
-    changed: List[str] = []
-    ignored: List[str] = []
-    for path in root.rglob("*"):
-        if not path.is_file():
-            continue
-        try:
-            if path.stat().st_mtime >= started_at:
-                if path.suffix.lower() in _MEDIA_SUFFIXES:
-                    changed.append(str(path))
-                else:
-                    ignored.append(str(path))
-        except OSError:
-            pass
-    return sorted(changed), sorted(ignored)
+    return changed_files_since(
+        root,
+        started_at,
+        allowed_suffixes=_MEDIA_SUFFIXES,
+        include_ignored=True,
+    )
 
 
 def _normalize_timings(source: Dict[str, int]) -> Dict[str, int]:
@@ -197,7 +195,7 @@ def _normalize_download_stage_timing(
     download_metrics: List[Dict[str, Any]],
 ) -> None:
     timings["xhs_flow_ms"] = timings.get("download_content_ms", 0)
-    timings["download_content_ms"] = _sum_metric_duration(api_metrics) + _sum_metric_duration(download_metrics)
+    timings["download_content_ms"] = sum_metric_duration(api_metrics) + sum_metric_duration(download_metrics)
 
 
 def _build_api_metrics(timings: Dict[str, int]) -> List[Dict[str, Any]]:
@@ -219,13 +217,13 @@ def _build_download_metrics(
     items: List[Any],
     timings: Dict[str, int],
 ) -> List[Dict[str, Any]]:
-    bytes_total = _sum_file_bytes(files)
+    bytes_total = sum_file_bytes(files)
     if bytes_total <= 0:
         return []
 
     duration_ms = max(1, timings.get("download_files_ms", 0))
     speed_kbps = int((bytes_total / 1024) / (duration_ms / 1000))
-    host = _first_media_host(items)
+    host = first_media_host(items, fallback_suffixes=("xiaohongshu.com", "xhslink.com"))
     return [
         {
             "ok": True,
@@ -237,46 +235,6 @@ def _build_download_metrics(
             "speed_kbps": speed_kbps,
         }
     ]
-
-
-def _sum_metric_duration(metrics: List[Dict[str, Any]]) -> int:
-    return sum(int(item.get("duration_ms") or 0) for item in metrics)
-
-
-def _sum_file_bytes(files: List[str]) -> int:
-    total = 0
-    for file in files:
-        try:
-            total += Path(file).stat().st_size
-        except OSError:
-            pass
-    return total
-
-
-def _first_media_host(items: List[Any]) -> Optional[str]:
-    fallback: Optional[str] = None
-    for item in items:
-        for url in _iter_urls(item):
-            host = urlparse(url).hostname
-            if not host:
-                continue
-            if host.endswith("xiaohongshu.com") or host.endswith("xhslink.com"):
-                fallback = fallback or host
-                continue
-            return host
-    return fallback
-
-
-def _iter_urls(value: Any):
-    if isinstance(value, str):
-        yield from re.findall(r"https?://[^\s\"'<>]+", value)
-    elif isinstance(value, dict):
-        for item in value.values():
-            yield from _iter_urls(item)
-    elif isinstance(value, (list, tuple, set)):
-        for item in value:
-            yield from _iter_urls(item)
-
 
 def _summary_message(files: List[str], ok_count: int) -> str:
     if files:
@@ -292,17 +250,9 @@ def _error(
     timings: Optional[Dict[str, int]] = None,
     traceback_text: str = "",
 ) -> Dict[str, Any]:
-    return {
-        "ok": False,
-        "message": message,
-        "error": message,
-        "traceback": traceback_text,
-        "output_dir": str(output_root) if output_root is not None else "",
-        "files": [],
-        "success": 0,
-        "failed": 1,
-        "skipped": 0,
-        "timings": timings or {},
-        "download_metrics": [],
-        "api_metrics": [],
-    }
+    return build_error_response(
+        message,
+        output_root=output_root,
+        timings=timings,
+        traceback_text=traceback_text,
+    )
