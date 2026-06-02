@@ -4,7 +4,6 @@ import android.content.Intent
 import android.os.Bundle
 import android.os.SystemClock
 import android.view.Gravity
-import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
@@ -26,6 +25,8 @@ import com.zemin.downloader.common.core.currentTitle
 import com.zemin.downloader.common.util.formatBytes
 import com.zemin.downloader.common.util.toast
 import com.zemin.downloader.databinding.ActivityMainBinding
+import com.zemin.downloader.databinding.DialogSwitchingPlatformBinding
+import com.zemin.downloader.databinding.ViewPlatformSelectorBinding
 import com.zemin.downloader.impl.BridgeAbilityConfig
 import com.zemin.downloader.impl.DownloadType
 import com.zemin.downloader.ui.util.extractSharedText
@@ -182,9 +183,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
     }
 
     private fun setupPlatformSelector() {
-        val selector = LayoutInflater.from(this).inflate(
-            R.layout.view_platform_selector, binding.root, false
-        ) as TextView
+        val selector = ViewPlatformSelectorBinding.inflate(layoutInflater).root
         selector.apply {
             setOnClickListener { view -> showPlatformMenu(view) }
         }
@@ -255,11 +254,9 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
     private fun showSwitchingDialog() {
         if (switchingDialog?.isShowing == true) return
 
-        val dialogView = LayoutInflater.from(this).inflate(
-            R.layout.dialog_switching_platform, binding.root, false
-        )
+        val dialogBinding = DialogSwitchingPlatformBinding.inflate(layoutInflater)
         switchingDialog =
-            AlertDialog.Builder(this).setView(dialogView).setCancelable(false).create()
+            AlertDialog.Builder(this).setView(dialogBinding.root).setCancelable(false).create()
                 .also { it.show() }
     }
 

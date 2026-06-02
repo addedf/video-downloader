@@ -5,11 +5,9 @@ import android.content.Intent
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.net.Uri
-import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.Window
-import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.DefaultLifecycleObserver
@@ -19,6 +17,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.zemin.downloader.R
 import com.zemin.downloader.common.util.toast
+import com.zemin.downloader.databinding.DialogUpdateBinding
 import kotlinx.coroutines.launch
 
 class UpdateManager(
@@ -58,27 +57,27 @@ class UpdateManager(
     }
 
     private fun createUpdateDialogView(info: UpdateInfo): View {
-        return LayoutInflater.from(activity).inflate(R.layout.dialog_update, null, false).apply {
-            findViewById<TextView>(R.id.tvUpdateVersion).text = activity.getString(
+        return DialogUpdateBinding.inflate(activity.layoutInflater).apply {
+            tvUpdateVersion.text = activity.getString(
                 R.string.update_dialog_version_format,
                 updateVersionName(info),
             )
-            findViewById<TextView>(R.id.tvUpdateContent).text = activity.getString(
+            tvUpdateContent.text = activity.getString(
                 R.string.update_dialog_changelog_format,
                 updateChangelog(info),
             )
-            findViewById<View>(R.id.btnUpdateNow).setOnClickListener {
+            btnUpdateNow.setOnClickListener {
                 updateDialog?.dismiss()
                 openApkDownloadUrl(info.apkUrl)
             }
-            findViewById<View>(R.id.btnUpdateLater).apply {
+            btnUpdateLater.apply {
                 visibility = if (info.forceUpdate) View.GONE else View.VISIBLE
                 setOnClickListener { updateDialog?.dismiss() }
             }
             if (info.forceUpdate) {
-                findViewById<View>(R.id.btnUpdateNow).clearStartMargin()
+                btnUpdateNow.clearStartMargin()
             }
-        }
+        }.root
     }
 
     private fun View.clearStartMargin() {

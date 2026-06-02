@@ -1,6 +1,12 @@
-# 短视频下载器
+<p align="center">
+  <img src="docs/images/app-icon.svg" width="112" alt="短视频下载器图标">
+</p>
 
-这是一个面向 Android 端的短视频内容下载工具。
+<h1 align="center">短视频下载器</h1>
+
+<p align="center">
+  面向 Android 端的短视频内容下载工具。
+</p>
 
 项目通过 Android 原生界面承载下载流程，并使用 Chaquopy 集成 Python 下载逻辑。目前内置抖音和小红书两个平台模块，支持从分享文本、短链或作品链接中解析内容，并将下载结果保存到系统媒体目录中。
 
@@ -98,4 +104,4 @@ app/src/main/python
 
 ## 仓库说明
 
-国内gitee镜像仓库：[maozemin666/video-downloader](https://github.com/maozemin666/video-downloader) 
+国内gitee镜像仓库： [VideoDownloader: 抖音/小红书 短视频Android端下载工具，去水印，支持视频、图集。免费！免费！免费！](https://gitee.com/maomao999/video-downloader) 
