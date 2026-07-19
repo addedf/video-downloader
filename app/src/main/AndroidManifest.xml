@@ -45,15 +45,6 @@
                 <data
                     android:host="www.iesdouyin.com"
                     android:scheme="https" />
-                <data
-                    android:host="www.xiaohongshu.com"
-                    android:scheme="https" />
-                <data
-                    android:host="xiaohongshu.com"
-                    android:scheme="https" />
-                <data
-                    android:host="xhslink.com"
-                    android:scheme="https" />
             </intent-filter>
         </activity>
 

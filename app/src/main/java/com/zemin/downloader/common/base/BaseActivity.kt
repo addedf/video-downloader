@@ -6,6 +6,8 @@ import android.os.Build
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -27,6 +29,16 @@ abstract class BaseActivity<VB : ViewBinding>(
         private set
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.light(
+                android.graphics.Color.TRANSPARENT,
+                android.graphics.Color.TRANSPARENT,
+            ),
+            navigationBarStyle = SystemBarStyle.light(
+                android.graphics.Color.TRANSPARENT,
+                android.graphics.Color.TRANSPARENT,
+            ),
+        )
         super.onCreate(savedInstanceState)
         binding = inflateBinding(layoutInflater)
         setContentView(binding.root)
@@ -48,7 +60,7 @@ abstract class BaseActivity<VB : ViewBinding>(
         }
     }
 
-    protected fun applySystemBarInsets(view: View) {
+    protected open fun applySystemBarInsets(view: View) {
         ViewCompat.setOnApplyWindowInsetsListener(view) { target, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             target.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)

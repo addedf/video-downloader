@@ -1,189 +1,546 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/white"
-    android:fillViewport="true">
+    android:background="@color/white">
 
     <LinearLayout
+        android:id="@+id/pageContainer"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="16dp">
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/tvAppTitle"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="@color/white"
+            android:elevation="2dp"
+            android:gravity="center_vertical"
+            android:includeFontPadding="false"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:text="@string/app_name"
+            android:textColor="@color/dy_primary"
+            android:textSize="20sp"
+            android:textStyle="bold" />
 
         <LinearLayout
-            android:id="@+id/loginSection"
+            android:id="@+id/contentPanel"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="8dp"
-            android:background="@drawable/bg_section_login"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:padding="16dp">
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:paddingStart="8dp"
+            android:paddingTop="8dp"
+            android:paddingEnd="8dp"
+            android:paddingBottom="64dp">
 
             <LinearLayout
-                android:layout_width="0dp"
+                android:id="@+id/downloadSection"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="12dp"
-                android:layout_weight="1"
-                android:orientation="vertical">
+                android:background="@drawable/bg_section_download"
+                android:orientation="vertical"
+                android:padding="8dp">
 
                 <TextView
-                    android:id="@+id/accountDesc"
-                    android:layout_width="wrap_content"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="@string/main_account_default"
+                    android:text="@string/main_section_resolve"
+                    android:textColor="@color/dy_text_muted"
+                    android:textSize="11sp" />
+
+                <TextView
+                    android:id="@+id/tvInputTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:text="@string/main_input_title_douyin"
+                    android:textColor="@color/dy_primary_light"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <EditText
+                    android:id="@+id/etUrl"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:layout_marginTop="4dp"
+                    android:background="@drawable/bg_share_input"
+                    android:gravity="top|start"
+                    android:hint="@string/main_share_input_hint"
+                    android:inputType="textMultiLine"
+                    android:maxLines="2"
+                    android:minLines="1"
+                    android:padding="7dp"
+                    android:textColor="@color/dy_primary_light"
+                    android:textColorHint="@color/dy_text_muted"
+                    android:textSize="12sp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="5dp"
+                    android:orientation="horizontal">
+
+                    <com.zemin.downloader.ui.view.DyActionButton
+                        android:id="@+id/btnClear"
+                        android:layout_width="0dp"
+                        android:layout_height="34dp"
+                        android:layout_weight="1"
+                        android:text="@string/main_button_clear" />
+
+                    <com.zemin.downloader.ui.view.DyActionButton
+                        android:id="@+id/btnDownload"
+                        android:layout_width="0dp"
+                        android:layout_height="34dp"
+                        android:layout_marginStart="7dp"
+                        android:layout_weight="1"
+                        android:text="@string/main_button_download" />
+                </LinearLayout>
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/previewSection"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_marginTop="6dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_section_download"
+                android:orientation="vertical"
+                android:padding="8dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/main_preview_section_title"
+                    android:textColor="@color/dy_text_muted"
+                    android:textSize="11sp" />
+
+                <TextView
+                    android:id="@+id/tvPreviewTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/dy_primary_light"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvPreviewMeta"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/dy_text_muted"
+                    android:textSize="10sp" />
+
+                <LinearLayout
+                    android:id="@+id/previewTabs"
+                    android:layout_width="match_parent"
+                    android:layout_height="28dp"
+                    android:layout_marginTop="4dp"
+                    android:background="@drawable/bg_tabs"
+                    android:orientation="horizontal"
+                    android:padding="2dp">
+
+                    <com.zemin.downloader.ui.view.DyTabButton
+                        android:id="@+id/btnImageTab"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:text="@string/main_preview_tab_images" />
+
+                    <com.zemin.downloader.ui.view.DyTabButton
+                        android:id="@+id/btnVideoTab"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_marginStart="2dp"
+                        android:layout_weight="1"
+                        android:text="@string/main_preview_tab_video" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/previewBody"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_marginTop="5dp"
+                    android:layout_weight="1"
+                    android:minHeight="120dp"
+                    android:orientation="horizontal">
+
+                    <com.zemin.downloader.ui.view.DyPreviewCardView
+                        android:id="@+id/previewCard"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1">
+
+                        <ImageView
+                            android:id="@+id/ivPreviewCover"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:adjustViewBounds="true"
+                            android:contentDescription="@string/main_preview_cover_desc"
+                            android:scaleType="fitCenter"
+                            android:visibility="gone" />
+
+                        <com.zemin.downloader.ui.view.CenteredVideoView
+                            android:id="@+id/videoPreview"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:layout_gravity="center"
+                            android:visibility="gone" />
+
+                        <TextView
+                            android:id="@+id/tvPreviewCounter"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_margin="5dp"
+                            android:background="@drawable/bg_counter"
+                            android:paddingStart="6dp"
+                            android:paddingTop="2dp"
+                            android:paddingEnd="6dp"
+                            android:paddingBottom="2dp"
+                            android:textColor="@color/white"
+                            android:textSize="10sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/tvPlayIcon"
+                            android:layout_width="44dp"
+                            android:layout_height="44dp"
+                            android:layout_gravity="center"
+                            android:background="@drawable/bg_counter"
+                            android:gravity="center"
+                            android:text="▶"
+                            android:textColor="@color/white"
+                            android:textSize="20sp"
+                            android:visibility="gone" />
+                    </com.zemin.downloader.ui.view.DyPreviewCardView>
+
+                    <ScrollView
+                        android:id="@+id/thumbScroll"
+                        android:layout_width="56dp"
+                        android:layout_height="match_parent"
+                        android:layout_marginStart="5dp"
+                        android:background="@color/dy_surface"
+                        android:clipToPadding="false"
+                        android:fillViewport="false"
+                        android:padding="3dp"
+                        android:scrollbars="none">
+
+                        <LinearLayout
+                            android:id="@+id/thumbContainer"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_horizontal"
+                            android:orientation="vertical" />
+                    </ScrollView>
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/tvPreviewItemTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="22dp"
+                    android:background="@drawable/bg_preview_caption"
+                    android:ellipsize="end"
+                    android:gravity="center_vertical"
+                    android:maxLines="1"
+                    android:paddingStart="6dp"
+                    android:paddingEnd="6dp"
+                    android:textColor="@color/dy_primary_light"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="5dp"
+                    android:orientation="horizontal">
+
+                    <com.zemin.downloader.ui.view.DyActionButton
+                        android:id="@+id/btnCopyLink"
+                        android:layout_width="0dp"
+                        android:layout_height="36dp"
+                        android:layout_weight="1"
+                        android:text="@string/main_button_copy_link" />
+
+                    <com.zemin.downloader.ui.view.DyActionButton
+                        android:id="@+id/btnSaveSheet"
+                        android:layout_width="0dp"
+                        android:layout_height="36dp"
+                        android:layout_marginStart="7dp"
+                        android:layout_weight="1.4"
+                        android:text="@string/main_button_save_to_album" />
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/bottomNav"
+        android:layout_width="match_parent"
+        android:layout_height="58dp"
+        android:layout_gravity="bottom"
+        android:background="@drawable/bg_bottom_nav"
+        android:orientation="horizontal"
+        android:paddingStart="8dp"
+        android:paddingTop="4dp"
+        android:paddingEnd="8dp"
+        android:paddingBottom="4dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:text="↓\n提取"
+            android:textColor="@color/dy_primary"
+            android:textSize="11sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/btnMine"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:text="•\n我的"
+            android:textColor="@color/dy_primary_light"
+            android:textSize="11sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <com.zemin.downloader.ui.view.DownloadProgressBubbleView
+        android:id="@+id/progressBubble"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:layout_gravity="top|end"
+        android:contentDescription="@string/main_progress_bubble_desc"
+        android:elevation="10dp"
+        android:visibility="gone" />
+
+    <FrameLayout
+        android:id="@+id/dialogMask"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#73050507"
+        android:clickable="true"
+        android:focusable="true"
+        android:padding="22dp"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/clipboardDialogPanel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:background="@drawable/bg_dialog_panel"
+            android:orientation="vertical"
+            android:padding="22dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/main_clipboard_dialog_title"
+                android:textColor="@color/dy_primary"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvClipboardDialogMessage"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:textColor="@color/dy_text_muted"
+                android:textSize="14sp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:orientation="horizontal">
+
+                <com.zemin.downloader.ui.view.DyActionButton
+                    android:id="@+id/btnClipboardDismiss"
+                    android:layout_width="0dp"
+                    android:layout_height="44dp"
+                    android:layout_weight="1"
+                    android:text="@string/main_button_dismiss_clipboard" />
+
+                <com.zemin.downloader.ui.view.DyActionButton
+                    android:id="@+id/btnClipboardParse"
+                    android:layout_width="0dp"
+                    android:layout_height="44dp"
+                    android:layout_marginStart="10dp"
+                    android:layout_weight="1"
+                    android:text="@string/main_button_parse_clipboard" />
+            </LinearLayout>
+        </LinearLayout>
+    </FrameLayout>
+
+    <FrameLayout
+        android:id="@+id/sheetMask"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#73050507"
+        android:clickable="true"
+        android:focusable="true"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/mineSheet"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom"
+            android:background="@drawable/bg_sheet_panel"
+            android:orientation="vertical"
+            android:paddingStart="16dp"
+            android:paddingTop="10dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="16dp"
+            android:visibility="gone">
+
+            <View
+                android:layout_width="42dp"
+                android:layout_height="4dp"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginBottom="16dp"
+                android:background="@drawable/bg_sheet_grabber" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/main_mine_title"
+                android:textColor="@color/dy_primary"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:id="@+id/loginSection"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:background="@drawable/bg_section_login"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:padding="12dp">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/accountDesc"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/main_account_default"
+                        android:textColor="@color/dy_text_muted"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:id="@+id/tvLoginState"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="@string/main_status_not_logged_in"
+                        android:textColor="@color/dy_primary_light"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <com.zemin.downloader.ui.view.DyActionButton
+                    android:id="@+id/btnLogin"
+                    android:layout_width="wrap_content"
+                    android:layout_height="44dp"
+                    android:layout_marginStart="10dp"
+                    android:text="@string/main_login_douyin" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/historySection"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_section_download"
+                android:orientation="vertical"
+                android:padding="12dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/main_history_title"
                     android:textColor="@color/dy_text_muted"
                     android:textSize="13sp" />
 
                 <TextView
-                    android:id="@+id/tvLoginState"
-                    android:layout_width="wrap_content"
+                    android:id="@+id/tvHistoryInfo"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
-                    android:text="@string/main_status_not_logged_in"
+                    android:layout_marginTop="6dp"
                     android:textColor="@color/dy_primary_light"
-                    android:textSize="16sp"
-                    android:textStyle="bold" />
+                    android:textSize="14sp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:orientation="horizontal">
+
+                    <com.zemin.downloader.ui.view.DyActionButton
+                        android:id="@+id/btnHistoryOpen"
+                        android:layout_width="0dp"
+                        android:layout_height="42dp"
+                        android:layout_weight="1"
+                        android:text="@string/main_history_open" />
+
+                    <com.zemin.downloader.ui.view.DyActionButton
+                        android:id="@+id/btnHistoryShare"
+                        android:layout_width="0dp"
+                        android:layout_height="42dp"
+                        android:layout_marginStart="8dp"
+                        android:layout_weight="1"
+                        android:text="@string/main_history_share" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:orientation="horizontal">
+
+                    <com.zemin.downloader.ui.view.DyActionButton
+                        android:id="@+id/btnHistoryRetry"
+                        android:layout_width="0dp"
+                        android:layout_height="42dp"
+                        android:layout_weight="1"
+                        android:text="@string/main_history_retry" />
+
+                    <com.zemin.downloader.ui.view.DyActionButton
+                        android:id="@+id/btnHistoryClear"
+                        android:layout_width="0dp"
+                        android:layout_height="42dp"
+                        android:layout_marginStart="8dp"
+                        android:layout_weight="1"
+                        android:text="@string/main_history_clear" />
+                </LinearLayout>
             </LinearLayout>
 
-            <Button
-                android:id="@+id/btnLogin"
-                android:layout_width="wrap_content"
-                android:layout_height="40dp"
-                android:backgroundTint="@color/dy_primary"
-                android:paddingStart="16dp"
-                android:paddingEnd="16dp"
-                android:text="@string/main_login_douyin"
-                android:textColor="@color/white"
-                android:textSize="14sp" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/downloadSection"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@drawable/bg_section_download"
-            android:orientation="vertical"
-            android:padding="16dp">
-
-            <TextView
+            <com.zemin.downloader.ui.view.DyActionButton
+                android:id="@+id/btnCloseMineSheet"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/main_section_download"
-                android:textColor="@color/dy_text_muted"
-                android:textSize="13sp" />
-
-            <TextView
-                android:id="@+id/tvInputTitle"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="@string/main_input_title_douyin"
-                android:textColor="@color/dy_primary_light"
-                android:textSize="18sp"
-                android:textStyle="bold" />
-
-            <EditText
-                android:id="@+id/etUrl"
-                android:layout_width="match_parent"
-                android:layout_height="132dp"
-                android:layout_marginTop="12dp"
-                android:background="@drawable/bg_share_input"
-                android:gravity="top|start"
-                android:hint="@string/main_share_input_hint"
-                android:inputType="textMultiLine"
-                android:maxLines="6"
-                android:minLines="4"
-                android:padding="12dp"
-                android:textColor="@color/dy_primary_light"
-                android:textColorHint="@color/dy_text_muted"
-                android:textSize="15sp" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
+                android:layout_height="44dp"
                 android:layout_marginTop="14dp"
-                android:orientation="horizontal">
-
-                <Button
-                    android:id="@+id/btnClear"
-                    android:layout_width="0dp"
-                    android:layout_height="48dp"
-                    android:layout_weight="1"
-                    android:backgroundTint="@color/dy_cyan"
-                    android:text="@string/main_button_clear"
-                    android:textColor="@color/black" />
-
-                <Button
-                    android:id="@+id/btnDownload"
-                    android:layout_width="0dp"
-                    android:layout_height="48dp"
-                    android:layout_marginStart="10dp"
-                    android:layout_weight="1"
-                    android:backgroundTint="@color/dy_primary"
-                    android:text="@string/main_button_download"
-                    android:textColor="@color/white" />
-            </LinearLayout>
-
-            <ProgressBar
-                android:id="@+id/progressBar"
-                style="?android:attr/progressBarStyleHorizontal"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/download_progress_top_margin"
-                android:max="100"
-                android:visibility="gone" />
-
-            <LinearLayout
-                android:id="@+id/progressDetail"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/download_progress_detail_top_margin"
-                android:orientation="horizontal"
-                android:visibility="gone">
-
-                <TextView
-                    android:id="@+id/tvProgressSize"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/main_progress_size_unknown"
-                    android:textColor="@color/dy_text_muted"
-                    android:textSize="@dimen/download_progress_detail_text_size" />
-
-                <TextView
-                    android:id="@+id/tvProgressSpeed"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="10dp"
-                    android:text="@string/main_progress_speed_unknown"
-                    android:textColor="@color/dy_text_muted"
-                    android:textSize="@dimen/download_progress_detail_text_size" />
-            </LinearLayout>
-
-            <TextView
-                android:id="@+id/tvStatus"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:text="@string/main_status_waiting_input"
-                android:textColor="@color/dy_primary_light"
-                android:textSize="16sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/tvInfo"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:background="@drawable/bg_output_panel"
-                android:padding="12dp"
-                android:text=""
-                android:textColor="@color/dy_text_muted"
-                android:textSize="12sp"
-                android:visibility="gone" />
+                android:text="@string/main_button_close" />
         </LinearLayout>
-    </LinearLayout>
-</ScrollView>
+    </FrameLayout>
+</FrameLayout>

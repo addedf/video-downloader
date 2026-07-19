@@ -18,3 +18,23 @@ open class PyDownloadResult(
     val downloadMetrics: List<DownloadMetric>,
     val apiMetrics: List<ApiMetric>
 ) : IDownloadResult
+
+open class PyResolveResult(
+    val ok: Boolean,
+    val message: String,
+    val error: String?,
+    val sourceUrl: String?,
+    val sourceId: String?,
+    val title: String?,
+    val author: String?,
+    val coverUrl: String?,
+    val mediaType: String?,
+    val resources: List<ResolvedResource> = emptyList(),
+) : IDownloadResult
+
+data class ResolvedResource(
+    val title: String = "",
+    val mediaType: String = "",
+    val downloadUrls: List<String> = emptyList(),
+    val selected: Boolean = true,
+)

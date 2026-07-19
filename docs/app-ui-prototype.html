@@ -1,0 +1,599 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>安卓当前 UI 对齐稿</title>
+  <style>
+    :root {
+      --primary: #121217;
+      --primary-dark: #050507;
+      --primary-light: #24242c;
+      --cyan: #00e5f0;
+      --cyan-dark: #00a8b5;
+      --surface: #f7f8fa;
+      --surface-strong: #eef1f4;
+      --preview-canvas: #d7dbe0;
+      --stroke: #dde2e8;
+      --muted: #69707a;
+      --white: #fff;
+      --mask: rgba(5, 5, 7, .45);
+      --radius: 8px;
+      color-scheme: light;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: #d8dce3;
+      color: var(--primary-light);
+    }
+
+    button, textarea { font: inherit; }
+
+    .phone {
+      width: min(430px, 100vw);
+      min-height: 100vh;
+      height: 100vh;
+      margin: 0 auto;
+      background: var(--white);
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 0 0 1px rgba(0,0,0,.05);
+    }
+
+    .app-title {
+      height: 82px;
+      padding: 34px 16px 0;
+      display: flex;
+      align-items: center;
+      background: var(--white);
+      color: var(--primary);
+      font-size: 20px;
+      font-weight: 800;
+      box-shadow: 0 1px 4px rgba(18,18,23,.12);
+      position: relative;
+      z-index: 2;
+    }
+
+    .content {
+      height: calc(100vh - 82px);
+      padding: 8px 8px 64px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      background: var(--white);
+    }
+
+    .section {
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius);
+      background: var(--white);
+      padding: 8px;
+    }
+
+    .resolve-section { flex: 0 0 auto; }
+    .preview-section { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+
+    .label {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 15px;
+    }
+
+    .title {
+      margin-top: 1px;
+      color: var(--primary-light);
+      font-size: 14px;
+      line-height: 19px;
+      font-weight: 800;
+    }
+
+    .meta {
+      margin-top: 1px;
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 14px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    textarea {
+      width: 100%;
+      height: 48px;
+      margin-top: 4px;
+      resize: none;
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius);
+      background: var(--surface);
+      color: var(--primary-light);
+      outline: none;
+      padding: 7px;
+      font-size: 12px;
+      line-height: 17px;
+      display: block;
+    }
+
+    textarea:focus {
+      border-color: var(--cyan-dark);
+      box-shadow: 0 0 0 2px rgba(0,229,240,.15);
+    }
+
+    .button-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 7px;
+      margin-top: 5px;
+    }
+
+    .button-row.preview-actions { grid-template-columns: 1fr 1.4fr; }
+    .button-row.dialog-actions { gap: 10px; margin-top: 18px; }
+    .button-row.history { gap: 8px; margin-top: 8px; }
+
+    .action-btn {
+      height: 34px;
+      border: 0;
+      border-radius: var(--radius);
+      padding: 0 14px;
+      font-size: 14px;
+      font-weight: 800;
+      line-height: 34px;
+      text-align: center;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .primary { background: var(--primary); color: var(--white); }
+    .secondary { background: var(--cyan); color: #000; }
+    .ghost { background: var(--surface); color: var(--primary-light); border: 1px solid var(--stroke); }
+    .dialog-actions .action-btn, .mine-sheet .action-btn { height: 44px; line-height: 44px; }
+    .history .action-btn { height: 42px; line-height: 42px; font-size: 13px; }
+
+    .tabs {
+      height: 28px;
+      margin-top: 4px;
+      padding: 2px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2px;
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius);
+      background: var(--surface);
+    }
+
+    .tab {
+      border: 0;
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .tab.active { background: var(--white); color: var(--primary); }
+
+    .preview-body {
+      min-height: 120px;
+      flex: 1 1 auto;
+      display: flex;
+      gap: 5px;
+      margin-top: 5px;
+      overflow: hidden;
+    }
+
+    .preview-card {
+      flex: 1 1 auto;
+      min-width: 0;
+      min-height: 0;
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius);
+      background: var(--preview-canvas);
+      position: relative;
+      overflow: hidden;
+      display: grid;
+      place-items: center;
+    }
+
+    .preview-card::before {
+      content: "";
+      width: 58%;
+      height: 100%;
+      max-width: 260px;
+      background:
+        radial-gradient(circle at 52% 28%, #ffe2d7 0 9%, transparent 10%),
+        linear-gradient(150deg, transparent 0 29%, #f8e5d4 30% 36%, transparent 37%),
+        linear-gradient(170deg, transparent 0 47%, #f8e5d4 48% 61%, transparent 62%),
+        linear-gradient(180deg, #80604f 0 18%, #18191f 18% 100%);
+      box-shadow: 0 0 0 1px rgba(255,255,255,.15);
+    }
+
+    .preview-card.video::before {
+      width: 100%;
+      max-width: none;
+      background:
+        linear-gradient(180deg, rgba(0,0,0,.05), rgba(0,0,0,.5)),
+        radial-gradient(circle at 50% 40%, rgba(0,229,240,.24), transparent 28%),
+        linear-gradient(135deg, #20242d, #121217 58%, #30394c);
+    }
+
+    .counter {
+      position: absolute;
+      top: 5px;
+      left: 5px;
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: rgba(18,18,23,.78);
+      color: var(--white);
+      font-size: 10px;
+      font-weight: 800;
+      z-index: 2;
+    }
+
+    .play-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 999px;
+      display: none;
+      place-items: center;
+      position: absolute;
+      inset: 0;
+      margin: auto;
+      background: rgba(18,18,23,.78);
+      color: var(--white);
+      font-size: 20px;
+      z-index: 2;
+    }
+
+    .preview-card.video .play-icon { display: grid; }
+
+    .thumb-scroll {
+      width: 56px;
+      flex: 0 0 56px;
+      padding: 3px;
+      overflow: hidden;
+      background: var(--surface);
+    }
+
+    .thumbs {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .thumb {
+      height: 62px;
+      border-radius: var(--radius);
+      border: 1px solid var(--stroke);
+      background:
+        radial-gradient(circle at 50% 30%, #ffe2d7 0 12%, transparent 13%),
+        linear-gradient(180deg, #80604f 0 24%, #20242d 24% 100%);
+      display: grid;
+      place-items: center;
+      color: var(--white);
+      font-size: 12px;
+      font-weight: 800;
+      overflow: hidden;
+    }
+
+    .thumb.active { border: 2px solid var(--cyan-dark); background-color: var(--surface-strong); }
+    .thumb.video { background: #24242c; }
+
+    .caption {
+      height: 22px;
+      margin-top: 0;
+      padding: 0 6px;
+      display: flex;
+      align-items: center;
+      border: 1px solid var(--stroke);
+      border-top: 0;
+      background: var(--white);
+      color: var(--primary-light);
+      font-size: 11px;
+      font-weight: 800;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .bottom-nav {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 58px;
+      padding: 4px 8px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      background: var(--white);
+      border-top: 1px solid var(--stroke);
+      z-index: 8;
+    }
+
+    .nav-item {
+      display: grid;
+      place-items: center;
+      color: var(--primary-light);
+      font-size: 11px;
+      line-height: 16px;
+      font-weight: 800;
+      white-space: pre-line;
+      cursor: pointer;
+    }
+
+    .nav-item span { display: block; }
+
+    .nav-item.active { color: var(--primary); }
+
+    .progress-bubble {
+      position: absolute;
+      top: 42px;
+      right: 8px;
+      width: 56px;
+      height: 56px;
+      border-radius: 999px;
+      background: var(--white);
+      box-shadow: 0 2px 10px rgba(0,0,0,.25);
+      display: none;
+      place-items: center;
+      z-index: 12;
+    }
+
+    .progress-bubble.show { display: grid; }
+
+    .progress-bubble svg { position: absolute; inset: 0; transform: rotate(-90deg); }
+    .progress-bubble circle { fill: none; stroke-width: 4; stroke-linecap: round; }
+    .progress-bubble .track { stroke: var(--stroke); }
+    .progress-bubble .fill { stroke: var(--cyan-dark); stroke-dasharray: 126; stroke-dashoffset: 40; }
+    .progress-bubble span { color: var(--primary); font-size: 11px; font-weight: 800; z-index: 1; }
+
+    .mask {
+      position: absolute;
+      inset: 0;
+      background: var(--mask);
+      z-index: 20;
+      display: none;
+    }
+
+    .mask.show { display: block; }
+
+    .dialog {
+      position: absolute;
+      left: 22px;
+      right: 22px;
+      top: 50%;
+      transform: translateY(-50%);
+      border-radius: 16px;
+      background: var(--white);
+      padding: 22px;
+    }
+
+    .dialog h2, .mine-sheet h2 {
+      margin: 0;
+      color: var(--primary);
+      font-size: 20px;
+      line-height: 26px;
+    }
+
+    .dialog p {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 21px;
+      word-break: break-all;
+    }
+
+    .sheet-mask {
+      position: absolute;
+      inset: 0;
+      background: var(--mask);
+      z-index: 20;
+      display: none;
+      align-items: flex-end;
+    }
+
+    .sheet-mask.show { display: flex; }
+
+    .mine-sheet {
+      width: 100%;
+      border-radius: 18px 18px 0 0;
+      background: var(--white);
+      padding: 10px 16px 16px;
+    }
+
+    .grabber {
+      width: 42px;
+      height: 4px;
+      border-radius: 999px;
+      background: #c9ced6;
+      margin: 0 auto 16px;
+    }
+
+    .login-card, .history-card {
+      margin-top: 14px;
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius);
+      padding: 12px;
+      background: var(--white);
+    }
+
+    .login-card {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .login-copy { flex: 1; min-width: 0; }
+    .cookie-line { color: var(--muted); font-size: 12px; line-height: 17px; }
+    .login-state { margin-top: 2px; color: var(--primary-light); font-size: 16px; font-weight: 800; }
+    .history-card { background: var(--white); }
+    .history-title { color: var(--muted); font-size: 13px; }
+    .history-info { margin-top: 6px; color: var(--primary-light); font-size: 14px; line-height: 20px; word-break: break-all; }
+
+    @media (min-width: 600px) {
+      body { padding: 24px 0; }
+      .phone { height: 860px; min-height: 860px; border-radius: 28px; }
+      .content { height: 778px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="phone" aria-label="安卓当前 UI 对齐稿">
+    <header class="app-title">抖音下载器</header>
+
+    <section class="content">
+      <div class="section resolve-section">
+        <div class="label">资源解析</div>
+        <div class="title">抖音分享文本或链接</div>
+        <textarea id="shareInput" spellcheck="false">https://v.douyin.com/jxTKa2nJ4Oc/</textarea>
+        <div class="button-row">
+          <button class="action-btn secondary" type="button" onclick="clearInput()">清除链接</button>
+          <button class="action-btn primary" type="button" onclick="parseLink()">解析资源</button>
+        </div>
+      </div>
+
+      <div class="section preview-section" id="previewSection">
+        <div class="label">预览内容</div>
+        <div class="title">Myyu 的图文作品</div>
+        <div class="meta">作者：Myyu · 图集 · 10 个资源</div>
+
+        <div class="tabs" role="tablist">
+          <button id="imageTab" class="tab active" type="button" onclick="switchPreview('image')">图片预览 10</button>
+          <button id="videoTab" class="tab" type="button" onclick="switchPreview('video')">视频预览 1</button>
+        </div>
+
+        <div class="preview-body">
+          <div class="preview-card" id="previewCard">
+            <div class="counter" id="previewCounter">图片 1 / 10</div>
+            <div class="play-icon">▶</div>
+          </div>
+          <aside class="thumb-scroll" aria-label="右侧缩略图列表">
+            <div class="thumbs" id="thumbs">
+              <button class="thumb active" type="button" onclick="selectThumb(0)"></button>
+              <button class="thumb" type="button" onclick="selectThumb(1)"></button>
+              <button class="thumb" type="button" onclick="selectThumb(2)"></button>
+              <button class="thumb" type="button" onclick="selectThumb(3)"></button>
+              <button class="thumb" type="button" onclick="selectThumb(4)"></button>
+              <button class="thumb video" type="button" onclick="switchPreview('video')">▶</button>
+            </div>
+          </aside>
+        </div>
+
+        <div class="caption" id="previewCaption">图片 01</div>
+
+        <div class="button-row preview-actions">
+          <button class="action-btn ghost" type="button" onclick="copyLink()">复制链接</button>
+          <button class="action-btn primary" type="button" onclick="startSave()">保存到相册</button>
+        </div>
+      </div>
+    </section>
+
+    <nav class="bottom-nav" aria-label="底部导航">
+      <div class="nav-item active"><span>↓</span><span>提取</span></div>
+      <div class="nav-item" onclick="openMine()"><span>•</span><span>我的</span></div>
+    </nav>
+
+    <div class="progress-bubble" id="progressBubble" onclick="toast('7.2MB / 18.4MB · 2.4MB/s')">
+      <svg viewBox="0 0 56 56" aria-hidden="true">
+        <circle class="track" cx="28" cy="28" r="20"></circle>
+        <circle class="fill" cx="28" cy="28" r="20"></circle>
+      </svg>
+      <span id="progressLabel">68%</span>
+    </div>
+
+    <div class="mask show" id="clipboardMask" onclick="hideClipboard()">
+      <section class="dialog" onclick="event.stopPropagation()">
+        <h2>检测到分享链接</h2>
+        <p>剪贴板中发现可解析链接，是否直接填入并解析？<br>https://v.douyin.com/jxTKa2nJ4Oc/</p>
+        <div class="button-row dialog-actions">
+          <button class="action-btn ghost" type="button" onclick="hideClipboard()">关闭</button>
+          <button class="action-btn primary" type="button" onclick="hideClipboard(); parseLink();">解析</button>
+        </div>
+      </section>
+    </div>
+
+    <div class="sheet-mask" id="mineMask" onclick="closeMine(event)">
+      <section class="mine-sheet" onclick="event.stopPropagation()">
+        <div class="grabber"></div>
+        <h2>我的</h2>
+
+        <div class="login-card">
+          <div class="login-copy">
+            <div class="cookie-line">Cookie：sessionid 有 / sso_uid_tt 有 / ttwid 有 / csrf 有 / msToken 有。长按登录按钮可清除 Cookie。</div>
+            <div class="login-state">已登录</div>
+          </div>
+          <button class="action-btn primary" type="button">重新登录</button>
+        </div>
+
+        <div class="history-card">
+          <div class="history-title">最近下载</div>
+          <div class="history-info">成功 · Myyu 的图文作品<br>https://v.douyin.com/jxTKa2nJ4Oc/<br>文件：10 个</div>
+          <div class="button-row history">
+            <button class="action-btn primary" type="button">打开</button>
+            <button class="action-btn secondary" type="button">分享</button>
+          </div>
+          <div class="button-row history">
+            <button class="action-btn primary" type="button">重试</button>
+            <button class="action-btn secondary" type="button">删除历史</button>
+          </div>
+        </div>
+
+        <button class="action-btn ghost" style="width:100%; margin-top:14px" type="button" onclick="hideMine()">关闭</button>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const input = document.getElementById('shareInput');
+    const previewCard = document.getElementById('previewCard');
+    const imageTab = document.getElementById('imageTab');
+    const videoTab = document.getElementById('videoTab');
+    const previewCounter = document.getElementById('previewCounter');
+    const previewCaption = document.getElementById('previewCaption');
+    const thumbs = [...document.querySelectorAll('.thumb')];
+
+    function parseLink() {
+      document.getElementById('previewSection').style.display = 'flex';
+      document.getElementById('previewSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function clearInput() {
+      input.value = '';
+      document.getElementById('previewSection').style.display = 'none';
+    }
+
+    function switchPreview(type) {
+      const video = type === 'video';
+      imageTab.classList.toggle('active', !video);
+      videoTab.classList.toggle('active', video);
+      previewCard.classList.toggle('video', video);
+      previewCounter.textContent = video ? '视频 1 / 1' : '图片 1 / 10';
+      previewCaption.textContent = video ? '无水印视频' : '图片 01';
+      thumbs.forEach((thumb, index) => thumb.classList.toggle('active', video ? index === 5 : index === 0));
+    }
+
+    function selectThumb(index) {
+      switchPreview('image');
+      thumbs.forEach((thumb, i) => thumb.classList.toggle('active', i === index));
+      previewCounter.textContent = `图片 ${index + 1} / 10`;
+      previewCaption.textContent = `图片 ${String(index + 1).padStart(2, '0')}`;
+    }
+
+    function startSave() {
+      const bubble = document.getElementById('progressBubble');
+      bubble.classList.add('show');
+      toast('开始保存到系统相册');
+    }
+
+    function copyLink() { toast('已复制链接'); }
+    function toast(text) { console.log(text); }
+    function hideClipboard() { document.getElementById('clipboardMask').classList.remove('show'); }
+    function openMine() { document.getElementById('mineMask').classList.add('show'); }
+    function hideMine() { document.getElementById('mineMask').classList.remove('show'); }
+    function closeMine(event) { if (event.target.id === 'mineMask') hideMine(); }
+  </script>
+</body>
+</html>

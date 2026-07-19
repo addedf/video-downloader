@@ -19,6 +19,7 @@ import kotlinx.coroutines.withContext
  */
 const val KEY_WARM_UP = "warm_up"
 const val KEY_REFRESH_COOKIES = "refresh_cookies"
+const val KEY_RESOLVE = "resolve"
 const val KEY_DOWNLOAD = "download"
 
 abstract class BasePyDownloadModule : IDownloadModule {
@@ -54,6 +55,12 @@ abstract class BasePyDownloadModule : IDownloadModule {
         python.getModule(pyModuleName).callAttr(KEY_REFRESH_COOKIES, cookieString)
     }
 
+    override suspend fun resolve(inputText: String) = withContext(Dispatchers.IO) {
+        python.getModule(pyModuleName).callAttr(KEY_RESOLVE, inputText).toString().let {
+            com.zemin.downloader.common.core.ResolveResultParser.parse(it)
+        }
+    }
+
     override suspend fun download(
         inputText: String,
         progressListener: DownloadProgressListener?,
@@ -64,5 +71,4 @@ abstract class BasePyDownloadModule : IDownloadModule {
             }
     }
 }
-
 

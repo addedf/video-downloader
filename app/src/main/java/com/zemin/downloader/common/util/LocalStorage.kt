@@ -20,15 +20,24 @@ object LocalStorage {
     }
 
     fun getAbility(): DownloadType {
-        return DownloadType.fromType(prefs.getString(KEY_ABILITY, null))
+        val storedType = DownloadType.fromType(prefs.getString(KEY_ABILITY, null))
+        return if (storedType in com.zemin.downloader.impl.BridgeAbilityConfig.getAllAbility()) {
+            storedType
+        } else {
+            com.zemin.downloader.impl.BridgeAbilityConfig.getDefaultDownloadType()
+        }
     }
 
     fun saveCookies(key: String, cookieString: String) {
-        prefs.edit { putString(key, cookieString) }
+        CookieVault.saveEncryptedCookie(prefs, key, cookieString)
     }
 
     fun getCookieString(key: String): String? {
-        return prefs.getString(key, null)
+        return CookieVault.getCookie(prefs, key)
+    }
+
+    fun clearCookies(key: String) {
+        CookieVault.clearCookie(prefs, key)
     }
 
     fun getCookiesMap(key: String): Map<String, String> {

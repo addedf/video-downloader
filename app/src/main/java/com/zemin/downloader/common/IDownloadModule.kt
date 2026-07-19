@@ -17,6 +17,8 @@ interface IDownloadModule : IBaseBusinessModule {
 
     suspend fun warmUp(): PyObject?
 
+    suspend fun resolve(inputText: String): PyResolveResult
+
     suspend fun download(
         inputText: String,
         progressListener: DownloadProgressListener? = null,
@@ -39,4 +41,3 @@ data class PyBridgeConfig(val cookieString: String?) {
 
     val outDownloadDir: String get() = MediaStorageManager.getPythonDownloadDir().absolutePath
 }
-

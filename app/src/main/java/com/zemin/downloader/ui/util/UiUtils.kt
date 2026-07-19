@@ -30,7 +30,7 @@ fun extractSharedText(intent: Intent?): String {
 fun normalizeSharedText(text: String): String {
     val trimmed = text.trim()
     if (trimmed.isEmpty()) return ""
-    val url = URL_PATTERN.find(trimmed)?.value?.trimEnd('.', ',', ';', '，', '。', '；', ')')
+    val url = URL_PATTERN.find(trimmed)?.value?.trimSupportedUrlEnd()
     return url ?: trimmed
 }
 
