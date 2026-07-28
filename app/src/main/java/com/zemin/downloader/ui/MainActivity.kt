@@ -46,7 +46,7 @@ import com.zemin.downloader.impl.DownloadType
 import com.zemin.downloader.ui.util.PlatformResolver
 import com.zemin.downloader.ui.util.extractSharedText
 import com.zemin.downloader.ui.view.DyActionButton
-import com.zemin.downloader.update.UpdateManager
+import com.zemin.downloader.update.AppUpdateManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -60,6 +60,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             refreshLoginState()
     }
+    private val appUpdateManager = AppUpdateManager(this)
     private var isDownloading = false
     private var currentPreview: PyResolveResult? = null
     private var currentPreviewInput: String? = null
@@ -76,14 +77,12 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
     private var progressBubblePositioned = false
     private val lastProgressUiUpdatedAt = AtomicLong(PROGRESS_RECORD_INIT_TIME)
     private val previewImageLoadToken = AtomicLong(PREVIEW_LOAD_INIT_TOKEN)
-    private val updateManager by lazy { UpdateManager(this) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setupProgressBubble()
         readSharedText(intent)
-        updateManager.checkOnStart()
-
+        appUpdateManager.checkOnStart()
         binding.btnLogin.setOnClickListener {
             loginLauncher.launch(Intent(this, LoginActivity::class.java))
         }
