@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="README.en.md">English</a> · <a href="https://github.com/addedf/video-downloader/releases/tag/v2.0.0">下载 v2.0.0</a>
+  <a href="README.en.md">English</a> · <a href="https://github.com/addedf/video-downloader/releases/tag/v2.2.0">下载 v2.2.0</a>
 </p>
 
 抖音下载器是一个面向 Android 的开源工具，用于解析抖音分享文本、短链和作品链接，并将视频或图集保存到系统媒体库。应用使用原生 Android 界面承载操作，借助 Chaquopy 集成 Python 解析与下载逻辑。
@@ -34,7 +34,7 @@
 
 ## 界面预览
 
-以下截图来自仓库中的 [v2 UI 对齐原型](docs/app-ui-prototype.html)，用于呈现当前的交互状态和视觉方向。
+以下截图来自仓库中的 [v2 UI 对齐原型](docs/prototypes/app-ui-prototype.html)，用于呈现当前的交互状态和视觉方向。
 
 | 检测到分享链接 | 解析后的资源预览 |
 | --- | --- |

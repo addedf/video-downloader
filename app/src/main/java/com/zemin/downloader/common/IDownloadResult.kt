@@ -30,11 +30,47 @@ open class PyResolveResult(
     val coverUrl: String?,
     val mediaType: String?,
     val resources: List<ResolvedResource> = emptyList(),
+    val schemaVersion: Int = 1,
+    val capabilities: ResolveCapabilities = ResolveCapabilities(),
+    val counts: ResolveCounts = ResolveCounts(),
 ) : IDownloadResult
 
 data class ResolvedResource(
+    val id: String = "",
+    val index: Int = 0,
     val title: String = "",
     val mediaType: String = "",
+    val previewUrls: List<String> = emptyList(),
     val downloadUrls: List<String> = emptyList(),
+    val width: Int? = null,
+    val height: Int? = null,
+    val durationMs: Long? = null,
+    val formatHint: String? = null,
+    val liveVideo: ResolvedLiveVideo? = null,
     val selected: Boolean = true,
+)
+
+data class ResolvedLiveVideo(
+    val available: Boolean = false,
+    val downloadUrls: List<String> = emptyList(),
+    val width: Int? = null,
+    val height: Int? = null,
+    val durationMs: Long? = null,
+    val formatHint: String? = null,
+)
+
+data class ResolveCapabilities(
+    val hasVideo: Boolean = false,
+    val hasImages: Boolean = false,
+    val hasCover: Boolean = false,
+    val hasAudio: Boolean = false,
+    val hasLiveVideo: Boolean = false,
+)
+
+data class ResolveCounts(
+    val videos: Int = 0,
+    val images: Int = 0,
+    val covers: Int = 0,
+    val audios: Int = 0,
+    val liveVideos: Int = 0,
 )

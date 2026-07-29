@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "versionCode": 5,
-  "versionName": "2.1.0",
-  "minSupportedVersionCode": 4,
-  "apkUrl": "https://github.com/addedf/video-downloader/releases/download/v2.1.0/DouYinDownloader-v2.1.0-arm64-v8a.apk",
-  "sha256": "16349cc82dbb2991bfd9916a58d39831cf73facffb237b5afac71f54133f5888",
-  "changelog": "将应用更新迁移到自有通道；下载后校验 SHA-256、包名、版本号和签名；新增系统安装引导。",
-  "publishedAt": "2026-07-28T15:56:20Z"
+  "versionCode": 6,
+  "versionName": "2.2.0",
+  "minSupportedVersionCode": 5,
+  "apkUrl": "https://github.com/addedf/video-downloader/releases/download/v2.2.0/DouYinDownloader-v2.2.0-arm64-v8a.apk",
+  "sha256": "00c9317c1091cfac12ede50b6b3aa78911a9381f803a198d1e39e9bb7165cd76",
+  "changelog": "新增视频、图片、封面和音频分类预览与选择保存；支持实况图配对视频；改进资源协议和下载流程。",
+  "publishedAt": "2026-07-29T18:13:15Z"
 }

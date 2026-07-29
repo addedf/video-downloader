@@ -2,6 +2,7 @@ package com.zemin.downloader.common
 
 import com.chaquo.python.PyObject
 import com.chaquo.python.Python
+import com.zemin.downloader.common.bean.DownloadRequest
 import com.zemin.downloader.common.util.MediaStorageManager
 
 /**
@@ -21,6 +22,7 @@ interface IDownloadModule : IBaseBusinessModule {
 
     suspend fun download(
         inputText: String,
+        request: DownloadRequest? = null,
         progressListener: DownloadProgressListener? = null,
     ): PyDownloadResult
 

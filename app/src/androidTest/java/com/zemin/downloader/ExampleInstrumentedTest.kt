@@ -1,7 +1,9 @@
 package com.zemin.downloader
 
+import android.content.Intent
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.zemin.downloader.ui.MainActivity
 
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -19,6 +21,18 @@ class ExampleInstrumentedTest {
     fun useAppContext() {
         // Context of the app under test.
         val appContext = InstrumentationRegistry.getInstrumentation().targetContext
-        assertEquals("com.zemin.downloader", appContext.packageName)
+        assertEquals("com.ricardo.douyindown", appContext.packageName)
+    }
+
+    @Test
+    fun mainActivityStartsWithoutCrashing() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val intent = Intent(instrumentation.targetContext, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+        val activity = instrumentation.startActivitySync(intent)
+        assertTrue(activity is MainActivity)
+
+        instrumentation.runOnMainSync { activity.finish() }
     }
 }

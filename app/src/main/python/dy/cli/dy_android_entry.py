@@ -15,6 +15,11 @@ from .dy_api_diagnostics import (
     install_android_api_diagnostics,
     reset_android_metrics,
 )
+from .dy_resource_normalizer import build_resolve_response, normalize_aweme
+from .dy_selected_downloader import (
+    download_selected_resources,
+    parse_download_request,
+)
 from common.android_flow_logger import AndroidFlowLogger, new_flow_logger, url_preview
 from common.android_progress_reporter import AndroidProgressReporter
 from common.android_utils import (
@@ -105,12 +110,17 @@ def refresh_cookies(cookie_header: str):
     config_loader.update(cookies=cookies)
 
 
-def download(input_text: str, progress_callback=None) -> str:
+def download(input_text: str, request_json=None, progress_callback=None) -> str:
     flow = new_flow_logger()
     try:
+        # Keep compatibility with the historical two-argument Python entry.
+        if request_json is not None and not isinstance(request_json, str):
+            progress_callback = request_json
+            request_json = None
+        request = parse_download_request(request_json)
         reset_android_metrics()
         flow.info("download.begin", input=url_preview(input_text))
-        result = asyncio.run(_download_async(input_text, flow, progress_callback))
+        result = asyncio.run(_download_async(input_text, flow, progress_callback, request))
     except Exception as exc:
         flow.mark_total()
         flow.error("download.failed", total_ms=flow.timings.get("total_ms"), error=str(exc))
@@ -178,15 +188,19 @@ async def _resolve_async(input_text: str, flow: AndroidFlowLogger) -> Dict[str, 
             return _error("解析失败，请检查链接权限或重新登录")
 
         flow.mark_total()
-        return {
-            "ok": True,
-            "message": "解析成功",
-            "source_url": resolved_url,
-            "source_id": str(aweme_id),
-            **_build_resource_preview(aweme_data, resolved_url),
-            "timings": dict(flow.timings),
-            **consume_android_metrics(),
-        }
+        response = build_resolve_response(
+            aweme_data,
+            input_url=input_text,
+            resolved_url=resolved_url,
+            source_id=str(aweme_id),
+        )
+        response.update(
+            {
+                "timings": dict(flow.timings),
+                **consume_android_metrics(),
+            }
+        )
+        return response
 
 
 def _build_resource_preview(aweme_data: Dict[str, Any], source_url: str) -> Dict[str, Any]:
@@ -293,6 +307,7 @@ async def _download_async(
         input_text: str,
         flow: AndroidFlowLogger,
         progress_callback=None,
+        request: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     started_wall = time.time()
 
@@ -343,6 +358,34 @@ async def _download_async(
                 )
             if downloader is None:
                 return _error(f"暂不支持的链接类型: {parsed.get('type')}", output_root)
+
+            if request is not None:
+                parsed_id = str(parsed.get("aweme_id") or parsed.get("note_id") or "")
+                requested_id = str(request.get("source", {}).get("id") or "")
+                if requested_id and parsed_id and requested_id != parsed_id:
+                    return _error("下载链接与已解析作品不一致，请重新解析", output_root)
+                with flow.stage("get_video_detail", aweme_id=parsed_id):
+                    aweme_data = await api_client.get_video_detail(parsed_id)
+                if not aweme_data:
+                    return _error("解析失败，请检查链接权限或重新登录", output_root)
+                with flow.stage("download_selected", resource_type=request["selection"]["resource_type"]):
+                    selected_result = await download_selected_resources(
+                        request=request,
+                        aweme_data=aweme_data,
+                        work=normalize_aweme(aweme_data),
+                        downloader=downloader,
+                        output_root=output_root,
+                    )
+                flow.mark_total()
+                selected_result.update(
+                    {
+                        "url": resolved_url,
+                        "type": parsed.get("type"),
+                        "timings": dict(flow.timings),
+                        **consume_android_metrics(),
+                    }
+                )
+                return selected_result
 
             with flow.stage("download_content", url_type=parsed.get("type")):
                 result = await downloader.download(parsed)

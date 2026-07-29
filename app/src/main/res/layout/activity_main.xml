@@ -155,15 +155,23 @@
                         android:layout_width="0dp"
                         android:layout_height="match_parent"
                         android:layout_weight="1"
-                        android:text="@string/main_preview_tab_images" />
+                        android:text="@string/main_preview_tab_image" />
 
                     <com.zemin.downloader.ui.view.DyTabButton
-                        android:id="@+id/btnVideoTab"
+                        android:id="@+id/btnCoverTab"
                         android:layout_width="0dp"
                         android:layout_height="match_parent"
                         android:layout_marginStart="2dp"
                         android:layout_weight="1"
-                        android:text="@string/main_preview_tab_video" />
+                        android:text="@string/main_preview_tab_cover" />
+
+                    <com.zemin.downloader.ui.view.DyTabButton
+                        android:id="@+id/btnAudioTab"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_marginStart="2dp"
+                        android:layout_weight="1"
+                        android:text="@string/main_preview_tab_audio" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -258,6 +266,17 @@
                     android:textSize="11sp"
                     android:textStyle="bold" />
 
+                <TextView
+                    android:id="@+id/tvSelectionNote"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:minHeight="14dp"
+                    android:textColor="@color/dy_text_muted"
+                    android:textSize="9sp" />
+
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -268,14 +287,31 @@
                         android:id="@+id/btnCopyLink"
                         android:layout_width="0dp"
                         android:layout_height="36dp"
-                        android:layout_weight="1"
+                        android:layout_weight="0.8"
                         android:text="@string/main_button_copy_link" />
+
+                    <CheckBox
+                        android:id="@+id/checkLiveVideo"
+                        android:layout_width="wrap_content"
+                        android:layout_height="36dp"
+                        android:layout_marginStart="5dp"
+                        android:background="@drawable/bg_share_input"
+                        android:buttonTint="@color/dy_primary"
+                        android:gravity="center"
+                        android:minWidth="88dp"
+                        android:paddingStart="5dp"
+                        android:paddingEnd="7dp"
+                        android:text="@string/main_live_video_option"
+                        android:textColor="@color/dy_primary"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        android:visibility="gone" />
 
                     <com.zemin.downloader.ui.view.DyActionButton
                         android:id="@+id/btnSaveSheet"
                         android:layout_width="0dp"
                         android:layout_height="36dp"
-                        android:layout_marginStart="7dp"
+                        android:layout_marginStart="5dp"
                         android:layout_weight="1.4"
                         android:text="@string/main_button_save_to_album" />
                 </LinearLayout>

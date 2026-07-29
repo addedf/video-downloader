@@ -17,3 +17,4 @@ __pycache__/
 .cxx
 local.properties
 /ignore/build/
+.ace-tool/

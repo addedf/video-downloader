@@ -22,6 +22,7 @@ import com.zemin.downloader.common.util.formatBytes
 import com.zemin.downloader.common.util.toast
 import com.zemin.downloader.databinding.DialogAppUpdateBinding
 import com.zemin.downloader.ui.view.DyActionButton
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.io.File
@@ -147,6 +148,7 @@ class AppUpdateManager(
                 updateDialog?.dismiss()
                 requestInstall(apkFile)
             }.onFailure { error ->
+                if (error is CancellationException) throw error
                 Log.e(TAG, "App update download or verification failed", error)
                 binding.tvUpdateStatus.setText(R.string.update_status_failed)
                 binding.btnUpdateNow.isEnabled = true

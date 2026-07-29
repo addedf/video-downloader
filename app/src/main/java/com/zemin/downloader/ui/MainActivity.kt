@@ -29,6 +29,9 @@ import com.zemin.downloader.R
 import com.zemin.downloader.common.DownloadProgressListener
 import com.zemin.downloader.common.PyResolveResult
 import com.zemin.downloader.common.ResolvedResource
+import com.zemin.downloader.common.bean.DownloadRequest
+import com.zemin.downloader.common.bean.DownloadSelection
+import com.zemin.downloader.common.bean.DownloadSource
 import com.zemin.downloader.common.base.BaseActivity
 import com.zemin.downloader.common.core.BridgeAbilityManager
 import com.zemin.downloader.common.core.DownloadModule
@@ -45,6 +48,8 @@ import com.zemin.downloader.databinding.ActivityMainBinding
 import com.zemin.downloader.impl.DownloadType
 import com.zemin.downloader.ui.util.PlatformResolver
 import com.zemin.downloader.ui.util.extractSharedText
+import com.zemin.downloader.ui.preview.PreviewUiPolicy
+import com.zemin.downloader.ui.preview.ResourceTab
 import com.zemin.downloader.ui.view.DyActionButton
 import com.zemin.downloader.update.AppUpdateManager
 import kotlinx.coroutines.Dispatchers
@@ -60,14 +65,17 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             refreshLoginState()
     }
-    private val appUpdateManager = AppUpdateManager(this)
+    // Activity fields are initialized before Context.attachBaseContext. Defer construction because
+    // AppUpdateManager reads applicationContext and SharedPreferences in its initializer.
+    private val appUpdateManager by lazy(LazyThreadSafetyMode.NONE) { AppUpdateManager(this) }
     private var isDownloading = false
     private var currentPreview: PyResolveResult? = null
     private var currentPreviewInput: String? = null
     private var suppressInputChangeHandling = false
     private var lastClipboardPromptUrl: String? = null
     private var pendingClipboardInput: String? = null
-    private var selectedPreviewMode: PreviewMode = PreviewMode.IMAGE
+    private var selectedResourceTab: ResourceTab = ResourceTab.IMAGE
+    private var availableResourceTabs: List<ResourceTab> = emptyList()
     private var selectedPreviewIndex = 0
     private var progressDetailMessage = ""
     private var systemInsetTop = 0
@@ -124,8 +132,10 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
             refreshHistoryUi()
             toast(getString(R.string.main_toast_history_cleared))
         }
-        binding.btnImageTab.setOnClickListener { selectPreviewMode(PreviewMode.IMAGE) }
-        binding.btnVideoTab.setOnClickListener { selectPreviewMode(PreviewMode.VIDEO) }
+        binding.btnImageTab.setOnClickListener { selectResourceTab(tabAt(0)) }
+        binding.btnCoverTab.setOnClickListener { selectResourceTab(tabAt(1)) }
+        binding.btnAudioTab.setOnClickListener { selectResourceTab(tabAt(2)) }
+        binding.checkLiveVideo.setOnCheckedChangeListener { _, _ -> refreshSelectionUi() }
         binding.btnCopyLink.setOnClickListener { copyCurrentPreviewLink() }
         binding.btnSaveSheet.setOnClickListener { saveCurrentPreview() }
         binding.btnMine.setOnClickListener { showMineSheet() }
@@ -214,7 +224,11 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         return false
     }
 
-    private fun startDownload(shareText: String, preview: PyResolveResult? = null) {
+    private fun startDownload(
+        shareText: String,
+        preview: PyResolveResult? = null,
+        request: DownloadRequest? = null,
+    ) {
         if (!ensureLoggedIn()) return
 
         isDownloading = true
@@ -228,11 +242,18 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
             val historyTitle = preview?.title?.takeIf { it.isNotBlank() } ?: getString(
                 R.string.main_input_title_douyin
             )
-            val historyMediaType = preview?.mediaType ?: currentType
+            val historyMediaType = request?.selection?.let { selection ->
+                if (selection.resourceType == "image" && selection.includeLiveVideo) {
+                    "image+live_video"
+                } else {
+                    selection.resourceType
+                }
+            } ?: preview?.mediaType ?: currentType
             try {
                 StoreModule.cleanupDownloadCache()
                 val result = DownloadModule.download(
                     inputText = shareText,
+                    request = request,
                     progressListener = createDownloadProgressListener(),
                 )
 
@@ -301,17 +322,19 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
     }
 
     private fun renderPreview(inputText: String, preview: PyResolveResult) {
-        currentPreview = preview
-        currentPreviewInput = inputText
-
         val mediaTypeText = formatMediaType(preview.mediaType)
-        val selectedResources = preview.resources.filter { it.selected }.ifEmpty { preview.resources }
-        val selectedResourceCount = selectedResources.size
+        val selectedResourceCount = preview.resources.size
         val title = preview.title.orEmpty().ifBlank { getString(R.string.main_preview_title_fallback) }
         val author = preview.author.orEmpty().ifBlank { currentTitle }
-        val imageCount = countResources(preview, PreviewMode.IMAGE)
-        val videoCount = countResources(preview, PreviewMode.VIDEO)
+        val uiState = PreviewUiPolicy.stateFor(preview)
+        if (uiState.tabs.isEmpty()) {
+            clearPreview()
+            showError(getString(R.string.main_error_no_resources))
+            return
+        }
 
+        currentPreview = preview
+        currentPreviewInput = inputText
         binding.previewSection.visibility = View.VISIBLE
         binding.tvPreviewTitle.text = title
         binding.tvPreviewMeta.text = getString(
@@ -320,17 +343,11 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
             mediaTypeText,
             selectedResourceCount,
         )
-        binding.btnImageTab.text = getString(R.string.main_preview_tab_images, imageCount)
-        binding.btnVideoTab.text = getString(R.string.main_preview_tab_video, videoCount)
-        binding.btnImageTab.visibility = if (imageCount > 0) View.VISIBLE else View.GONE
-        binding.btnVideoTab.visibility = if (videoCount > 0) View.VISIBLE else View.GONE
+        configureTabButtons(uiState.tabs, preview)
         refreshActionButton()
-        selectedPreviewMode = when {
-            imageCount > 0 -> PreviewMode.IMAGE
-            videoCount > 0 -> PreviewMode.VIDEO
-            else -> PreviewMode.IMAGE
-        }
-        selectPreviewMode(selectedPreviewMode)
+        selectedResourceTab = uiState.defaultTab
+        binding.checkLiveVideo.isChecked = false
+        selectResourceTab(selectedResourceTab)
     }
 
     private fun clearPreview() {
@@ -344,6 +361,9 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         binding.videoPreview.visibility = View.GONE
         binding.thumbContainer.removeAllViews()
         selectedPreviewIndex = 0
+        binding.checkLiveVideo.isChecked = false
+        binding.checkLiveVideo.visibility = View.GONE
+        availableResourceTabs = emptyList()
         hideSheets()
         refreshActionButton()
     }
@@ -352,39 +372,128 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         binding.btnDownload.text = getString(R.string.main_button_download)
     }
 
-    private fun selectPreviewMode(mode: PreviewMode) {
+    private fun selectResourceTab(tab: ResourceTab?) {
+        val selectedTab = tab ?: return
         val preview = currentPreview ?: return
-        val resources = resourcesForMode(preview, mode)
+        val resources = PreviewUiPolicy.resourcesFor(preview, selectedTab)
         if (resources.isEmpty()) return
 
-        selectedPreviewMode = mode
-        binding.btnImageTab.isSelected = mode == PreviewMode.IMAGE
-        binding.btnVideoTab.isSelected = mode == PreviewMode.VIDEO
+        selectedResourceTab = selectedTab
+        binding.btnImageTab.isSelected = tabAt(0) == selectedTab
+        binding.btnCoverTab.isSelected = tabAt(1) == selectedTab
+        binding.btnAudioTab.isSelected = tabAt(2) == selectedTab
         binding.tvPlayIcon.visibility = View.GONE
 
         val first = resources.first()
-        binding.tvPreviewCounter.text = when (mode) {
-            PreviewMode.IMAGE -> if (first.mediaType == "cover") {
-                getString(R.string.main_preview_counter_cover)
-            } else {
-                getString(R.string.main_preview_counter_image_format, 1, resources.size)
-            }
-            PreviewMode.VIDEO -> getString(R.string.main_preview_counter_video_format, 1, resources.size)
-        }
-        binding.tvPreviewItemTitle.text = when (mode) {
-            PreviewMode.IMAGE -> if (first.mediaType == "cover") {
-                getString(R.string.main_preview_item_cover)
-            } else {
-                getString(R.string.main_preview_item_image_format, 1)
-            }
-            PreviewMode.VIDEO -> getString(R.string.main_preview_item_video)
-        }
+        updatePreviewLabels(first, 0, resources.size, selectedTab)
         selectedPreviewIndex = 0
-        renderThumbnails(resources, mode)
-        updatePreviewResource(0, resources, mode)
+        renderThumbnails(resources, selectedTab)
+        updatePreviewResource(0, resources, selectedTab)
+        refreshSelectionUi()
     }
 
-    private fun renderThumbnails(resources: List<ResolvedResource>, mode: PreviewMode) {
+    private fun configureTabButtons(tabs: List<ResourceTab>, preview: PyResolveResult) {
+        availableResourceTabs = tabs
+        val buttons = listOf(binding.btnImageTab, binding.btnCoverTab, binding.btnAudioTab)
+        buttons.forEachIndexed { index, button ->
+            val tab = tabs.getOrNull(index)
+            button.visibility = if (tab == null) View.GONE else View.VISIBLE
+            if (tab != null) {
+                val count = PreviewUiPolicy.resourcesFor(preview, tab).size
+                button.text = when (tab) {
+                    ResourceTab.VIDEO -> getString(R.string.main_preview_tab_primary_video, count)
+                    ResourceTab.IMAGE -> getString(R.string.main_preview_tab_image, count)
+                    ResourceTab.COVER -> getString(R.string.main_preview_tab_cover, count)
+                    ResourceTab.AUDIO -> getString(R.string.main_preview_tab_audio, count)
+                }
+            }
+        }
+    }
+
+    private fun tabAt(index: Int): ResourceTab? = availableResourceTabs.getOrNull(index)
+
+    private fun updatePreviewLabels(
+        resource: ResolvedResource,
+        index: Int,
+        total: Int,
+        tab: ResourceTab,
+    ) {
+        binding.tvPreviewCounter.text = when (tab) {
+            ResourceTab.IMAGE -> getString(
+                R.string.main_preview_counter_image_format,
+                index + 1,
+                total,
+            )
+            ResourceTab.VIDEO -> getString(
+                R.string.main_preview_counter_video_format,
+                index + 1,
+                total,
+            )
+            ResourceTab.COVER -> getString(R.string.main_preview_counter_cover)
+            ResourceTab.AUDIO -> getString(R.string.main_preview_tab_audio, total)
+        }
+        binding.tvPreviewItemTitle.text = when (resource.mediaType) {
+            "video" -> getString(R.string.main_preview_item_video)
+            "cover" -> getString(R.string.main_preview_item_cover)
+            "audio" -> resource.title.ifBlank { getString(R.string.main_preview_item_audio) }
+            else -> getString(R.string.main_preview_item_image_format, index + 1)
+        }
+    }
+
+    private fun refreshSelectionUi() {
+        val preview = currentPreview ?: return
+        val showLive = PreviewUiPolicy.shouldShowLiveOption(preview, selectedResourceTab)
+        if (!showLive && binding.checkLiveVideo.isChecked) {
+            binding.checkLiveVideo.isChecked = false
+        }
+        binding.checkLiveVideo.visibility = if (showLive) View.VISIBLE else View.GONE
+
+        val resourceCount = PreviewUiPolicy.resourcesFor(preview, selectedResourceTab).size
+        val includeLive = showLive && binding.checkLiveVideo.isChecked
+        binding.btnSaveSheet.text = when (selectedResourceTab) {
+            ResourceTab.VIDEO -> getString(R.string.main_save_video)
+            ResourceTab.IMAGE -> if (includeLive) {
+                getString(R.string.main_save_images_live)
+            } else {
+                getString(R.string.main_save_images, resourceCount)
+            }
+            ResourceTab.COVER -> getString(R.string.main_save_cover)
+            ResourceTab.AUDIO -> getString(R.string.main_save_audio)
+        }
+        binding.tvSelectionNote.text = when (selectedResourceTab) {
+            ResourceTab.VIDEO -> getString(R.string.main_selection_video)
+            ResourceTab.IMAGE -> if (includeLive) {
+                getString(
+                    R.string.main_selection_images_live,
+                    resourceCount,
+                    preview.counts.liveVideos,
+                )
+            } else {
+                getString(R.string.main_selection_images, resourceCount)
+            }
+            ResourceTab.COVER -> getString(R.string.main_selection_cover)
+            ResourceTab.AUDIO -> getString(R.string.main_selection_audio)
+        }
+    }
+
+    private fun buildDownloadRequest(preview: PyResolveResult): DownloadRequest? {
+        if (preview.schemaVersion != 2 || currentDownloadType != DownloadType.DOU_YIN) return null
+        val sourceUrl = preview.sourceUrl?.takeIf { it.isNotBlank() }
+            ?: currentPreviewInput.orEmpty()
+        val sourceId = preview.sourceId.orEmpty()
+        if (sourceUrl.isBlank() || sourceId.isBlank()) return null
+        return DownloadRequest(
+            source = DownloadSource(url = sourceUrl, id = sourceId),
+            expectedWorkType = preview.mediaType.orEmpty(),
+            selection = DownloadSelection(
+                resourceType = selectedResourceTab.resourceType,
+                includeLiveVideo = binding.checkLiveVideo.visibility == View.VISIBLE &&
+                    binding.checkLiveVideo.isChecked,
+            ),
+        )
+    }
+
+    private fun renderThumbnails(resources: List<ResolvedResource>, tab: ResourceTab) {
         binding.thumbContainer.removeAllViews()
         resources.forEachIndexed { index, resource ->
             val thumb = FrameLayout(this).apply {
@@ -399,7 +508,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
                     else R.drawable.bg_thumb
                 )
                 setOnClickListener {
-                    updatePreviewResource(index, resources, mode)
+                    updatePreviewResource(index, resources, tab)
                 }
             }
             val imageView = ImageView(this).apply {
@@ -420,6 +529,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
                 text = when (resource.mediaType) {
                     "video" -> "▶"
                     "cover" -> "封面"
+                    "audio" -> "音频"
                     else -> (index + 1).toString()
                 }
             }
@@ -436,26 +546,14 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
     private fun updatePreviewResource(
         index: Int,
         resources: List<ResolvedResource>,
-        mode: PreviewMode,
+        tab: ResourceTab,
     ) {
         val preview = currentPreview ?: return
         val resource = resources.getOrNull(index) ?: return
         selectedPreviewIndex = index
         updateThumbnailSelection(index)
-        binding.tvPreviewCounter.text = when (mode) {
-            PreviewMode.IMAGE -> if (resource.mediaType == "cover") {
-                getString(R.string.main_preview_counter_cover)
-            } else {
-                getString(R.string.main_preview_counter_image_format, index + 1, resources.size)
-            }
-            PreviewMode.VIDEO -> getString(R.string.main_preview_counter_video_format, index + 1, resources.size)
-        }
-        binding.tvPreviewItemTitle.text = when (resource.mediaType) {
-            "video" -> getString(R.string.main_preview_item_video)
-            "cover" -> getString(R.string.main_preview_item_cover)
-            else -> getString(R.string.main_preview_item_image_format, index + 1)
-        }
-        if (mode == PreviewMode.VIDEO) {
+        updatePreviewLabels(resource, index, resources.size, tab)
+        if (tab == ResourceTab.VIDEO) {
             playPreviewVideo(resource)
         } else {
             stopPreviewVideo()
@@ -473,6 +571,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
     private fun formatMediaType(mediaType: String?): String = when (mediaType) {
         "video" -> getString(R.string.main_media_type_video)
         "gallery" -> getString(R.string.main_media_type_gallery)
+        "live_photo" -> getString(R.string.main_media_type_live_photo)
         else -> getString(R.string.main_media_type_unknown)
     }
 
@@ -541,7 +640,8 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
     }
 
     private fun thumbnailUrl(resource: ResolvedResource?, preview: PyResolveResult?): String {
-        val direct = resource?.downloadUrls?.firstOrNull().orEmpty()
+        val direct = resource?.previewUrls?.firstOrNull().orEmpty()
+            .ifBlank { resource?.downloadUrls?.firstOrNull().orEmpty() }
         if (resource?.mediaType == "image" || resource?.mediaType == "cover") return direct
         return preview?.coverUrl.orEmpty().ifBlank {
             preview?.resources
@@ -594,17 +694,6 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         return headers
     }
 
-    private fun countResources(preview: PyResolveResult, mode: PreviewMode): Int =
-        resourcesForMode(preview, mode).size
-
-    private fun resourcesForMode(preview: PyResolveResult, mode: PreviewMode): List<ResolvedResource> {
-        val selected = preview.resources.filter { it.selected }.ifEmpty { preview.resources }
-        return when (mode) {
-            PreviewMode.IMAGE -> selected.filter { it.mediaType == "image" || it.mediaType == "cover" }
-            PreviewMode.VIDEO -> selected.filter { it.mediaType == "video" }
-        }
-    }
-
     private fun copyCurrentPreviewLink() {
         val source = currentPreview?.sourceUrl?.takeIf { it.isNotBlank() }
             ?: currentPreviewInput?.takeIf { it.isNotBlank() }
@@ -619,7 +708,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         val preview = currentPreview
         if (input.isBlank() || preview == null) return
         hideSheets()
-        startDownload(input, preview)
+        startDownload(input, preview, buildDownloadRequest(preview))
     }
 
     private fun showMineSheet() {
@@ -1086,8 +1175,4 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         const val PREVIEW_REFERER = "https://www.douyin.com/"
     }
 
-    private enum class PreviewMode {
-        IMAGE,
-        VIDEO,
-    }
 }

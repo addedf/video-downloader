@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>安卓当前 UI 对齐稿</title>
+  <title>抖音资源保存类型 UI 原型</title>
   <style>
     :root {
       --primary: #121217;
@@ -31,7 +31,11 @@
       color: var(--primary-light);
     }
 
-    button, textarea { font: inherit; }
+    button, textarea, input { font: inherit; }
+
+    .prototype-stage {
+      min-height: 100vh;
+    }
 
     .phone {
       width: min(430px, 100vw);
@@ -130,6 +134,10 @@
     }
 
     .button-row.preview-actions { grid-template-columns: 1fr 1.4fr; }
+    .button-row.preview-actions.with-live-option {
+      grid-template-columns: minmax(72px, .8fr) auto minmax(0, 1.4fr);
+      gap: 5px;
+    }
     .button-row.dialog-actions { gap: 10px; margin-top: 18px; }
     .button-row.history { gap: 8px; margin-top: 8px; }
 
@@ -153,11 +161,11 @@
     .history .action-btn { height: 42px; line-height: 42px; font-size: 13px; }
 
     .tabs {
-      height: 28px;
-      margin-top: 4px;
+      height: 32px;
+      margin-top: 5px;
       padding: 2px;
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 2px;
       border: 1px solid var(--stroke);
       border-radius: var(--radius);
@@ -165,6 +173,7 @@
     }
 
     .tab {
+      min-width: 0;
       border: 0;
       border-radius: 6px;
       background: var(--surface);
@@ -172,9 +181,47 @@
       font-size: 12px;
       font-weight: 800;
       cursor: pointer;
+      white-space: nowrap;
     }
 
-    .tab.active { background: var(--white); color: var(--primary); }
+    .tab.active {
+      background: var(--white);
+      color: var(--primary);
+      box-shadow: 0 1px 3px rgba(18,18,23,.1);
+    }
+
+    .live-option {
+      height: 34px;
+      min-width: 88px;
+      padding: 0 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius);
+      background: var(--surface);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .live-option[hidden] { display: none; }
+
+    .live-option input {
+      width: 15px;
+      height: 15px;
+      margin: 0;
+      flex: 0 0 auto;
+      accent-color: var(--primary);
+    }
+
+    .live-title {
+      display: block;
+      color: var(--primary);
+      font-size: 12px;
+      line-height: 16px;
+      font-weight: 800;
+    }
 
     .preview-body {
       min-height: 120px;
@@ -211,13 +258,30 @@
       box-shadow: 0 0 0 1px rgba(255,255,255,.15);
     }
 
-    .preview-card.video::before {
+    .preview-card.mode-video::before {
       width: 100%;
       max-width: none;
       background:
         linear-gradient(180deg, rgba(0,0,0,.05), rgba(0,0,0,.5)),
         radial-gradient(circle at 50% 40%, rgba(0,229,240,.24), transparent 28%),
         linear-gradient(135deg, #20242d, #121217 58%, #30394c);
+    }
+
+    .preview-card.mode-cover::before {
+      width: 100%;
+      max-width: none;
+      background:
+        linear-gradient(180deg, rgba(0,0,0,.02), rgba(0,0,0,.42)),
+        radial-gradient(circle at 58% 29%, #ffe2d7 0 8%, transparent 9%),
+        linear-gradient(145deg, #c9d6dc 0 45%, #785d50 46% 58%, #24242c 59%);
+    }
+
+    .preview-card.mode-audio::before {
+      width: 100%;
+      max-width: none;
+      background:
+        radial-gradient(circle at 50% 50%, #00e5f0 0 11%, #121217 12% 23%, transparent 24%),
+        linear-gradient(135deg, #e8ecef, #f8f9fa 55%, #dce3e7);
     }
 
     .counter {
@@ -248,7 +312,21 @@
       z-index: 2;
     }
 
-    .preview-card.video .play-icon { display: grid; }
+    .preview-card.mode-video .play-icon { display: grid; }
+
+    .media-badge {
+      position: absolute;
+      right: 6px;
+      bottom: 6px;
+      padding: 3px 6px;
+      border-radius: 5px;
+      background: rgba(18,18,23,.78);
+      color: var(--white);
+      font-size: 9px;
+      line-height: 12px;
+      font-weight: 800;
+      z-index: 2;
+    }
 
     .thumb-scroll {
       width: 56px;
@@ -281,6 +359,8 @@
 
     .thumb.active { border: 2px solid var(--cyan-dark); background-color: var(--surface-strong); }
     .thumb.video { background: #24242c; }
+    .thumb.cover { background: linear-gradient(145deg, #c9d6dc 0 45%, #785d50 46% 58%, #24242c 59%); }
+    .thumb.audio { background: radial-gradient(circle, var(--cyan) 0 14%, #24242c 15% 38%, #dce3e7 39%); }
 
     .caption {
       height: 22px;
@@ -294,6 +374,17 @@
       color: var(--primary-light);
       font-size: 11px;
       font-weight: 800;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .selection-note {
+      min-height: 14px;
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 9px;
+      line-height: 12px;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -433,15 +524,152 @@
     .history-title { color: var(--muted); font-size: 13px; }
     .history-info { margin-top: 6px; color: var(--primary-light); font-size: 14px; line-height: 20px; word-break: break-all; }
 
+    .prototype-notes {
+      display: none;
+    }
+
+    .notes-card {
+      border: 1px solid rgba(18,18,23,.1);
+      border-radius: 18px;
+      background: rgba(255,255,255,.94);
+      padding: 18px;
+      box-shadow: 0 8px 30px rgba(18,18,23,.09);
+    }
+
+    .notes-kicker {
+      color: var(--cyan-dark);
+      font-size: 11px;
+      line-height: 16px;
+      font-weight: 900;
+      letter-spacing: .08em;
+    }
+
+    .notes-card h2 {
+      margin: 4px 0 0;
+      color: var(--primary);
+      font-size: 20px;
+      line-height: 27px;
+    }
+
+    .notes-lead {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 20px;
+    }
+
+    .logic-rule {
+      margin-top: 14px;
+      border: 1px solid var(--stroke);
+      border-radius: 12px;
+      padding: 12px;
+      background: var(--surface);
+    }
+
+    .logic-rule.live {
+      border-color: #9ce8ed;
+      background: #f1fcfd;
+    }
+
+    .logic-title {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--primary);
+      font-size: 14px;
+      line-height: 19px;
+      font-weight: 900;
+    }
+
+    .logic-dot {
+      width: 8px;
+      height: 8px;
+      flex: 0 0 auto;
+      border-radius: 999px;
+      background: var(--primary);
+    }
+
+    .logic-rule.live .logic-dot { background: var(--cyan-dark); }
+
+    .logic-tabs {
+      margin-top: 8px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+
+    .logic-tabs span {
+      border: 1px solid var(--stroke);
+      border-radius: 6px;
+      background: var(--white);
+      padding: 3px 7px;
+      color: var(--primary-light);
+      font-size: 11px;
+      line-height: 15px;
+      font-weight: 800;
+    }
+
+    .logic-copy {
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 17px;
+    }
+
+    .logic-warning {
+      margin-top: 14px;
+      border-left: 3px solid var(--cyan-dark);
+      padding: 2px 0 2px 10px;
+      color: var(--primary-light);
+      font-size: 12px;
+      line-height: 18px;
+      font-weight: 700;
+    }
+
     @media (min-width: 600px) {
       body { padding: 24px 0; }
       .phone { height: 860px; min-height: 860px; border-radius: 28px; }
       .content { height: 778px; }
     }
+
+    @media (min-width: 980px) {
+      .prototype-stage {
+        width: 890px;
+        margin: 0 auto;
+        display: grid;
+        grid-template-columns: 430px 436px;
+        gap: 24px;
+        align-items: start;
+      }
+
+      .phone { margin: 0; }
+
+      .prototype-notes {
+        display: block;
+        position: sticky;
+        top: 24px;
+        padding-top: 42px;
+      }
+    }
+
+    @media (max-width: 350px) {
+      .content { padding-left: 5px; padding-right: 5px; }
+      .section { padding: 6px; }
+      .tab { font-size: 11px; }
+      .action-btn { padding: 0 8px; font-size: 13px; }
+      .button-row.preview-actions.with-live-option {
+        grid-template-columns: minmax(66px, .72fr) auto minmax(0, 1.28fr);
+        gap: 4px;
+      }
+      .live-option { min-width: 80px; padding: 0 6px; }
+      .live-title { font-size: 11px; }
+      .thumb-scroll { width: 50px; flex-basis: 50px; }
+    }
   </style>
 </head>
 <body>
-  <main class="phone" aria-label="安卓当前 UI 对齐稿">
+  <div class="prototype-stage">
+  <main class="phone" aria-label="抖音资源保存类型 UI 原型">
     <header class="app-title">抖音下载器</header>
 
     <section class="content">
@@ -456,37 +684,36 @@
       </div>
 
       <div class="section preview-section" id="previewSection">
-        <div class="label">预览内容</div>
-        <div class="title">Myyu 的图文作品</div>
-        <div class="meta">作者：Myyu · 图集 · 10 个资源</div>
+        <div class="title" id="workTitle">Myyu 的 Live 图作品</div>
+        <div class="meta" id="workMeta">作者：Myyu · Live 图（动态照片）· 10 张</div>
 
-        <div class="tabs" role="tablist">
-          <button id="imageTab" class="tab active" type="button" onclick="switchPreview('image')">图片预览 10</button>
-          <button id="videoTab" class="tab" type="button" onclick="switchPreview('video')">视频预览 1</button>
+        <div class="tabs" role="tablist" aria-label="选择保存内容">
+          <button id="primaryTab" class="tab active" role="tab" aria-selected="true" type="button" onclick="selectResource('image')">图片 10</button>
+          <button id="coverTab" class="tab" role="tab" aria-selected="false" type="button" onclick="selectResource('cover')">封面 1</button>
+          <button id="audioTab" class="tab" role="tab" aria-selected="false" type="button" onclick="selectResource('audio')">音频 1</button>
         </div>
 
         <div class="preview-body">
           <div class="preview-card" id="previewCard">
             <div class="counter" id="previewCounter">图片 1 / 10</div>
             <div class="play-icon">▶</div>
+            <div class="media-badge" id="mediaBadge">JPG</div>
           </div>
           <aside class="thumb-scroll" aria-label="右侧缩略图列表">
-            <div class="thumbs" id="thumbs">
-              <button class="thumb active" type="button" onclick="selectThumb(0)"></button>
-              <button class="thumb" type="button" onclick="selectThumb(1)"></button>
-              <button class="thumb" type="button" onclick="selectThumb(2)"></button>
-              <button class="thumb" type="button" onclick="selectThumb(3)"></button>
-              <button class="thumb" type="button" onclick="selectThumb(4)"></button>
-              <button class="thumb video" type="button" onclick="switchPreview('video')">▶</button>
-            </div>
+            <div class="thumbs" id="thumbs"></div>
           </aside>
         </div>
 
         <div class="caption" id="previewCaption">图片 01</div>
+        <div class="selection-note" id="selectionNote">将保存 10 张原图；默认不保存动态视频</div>
 
-        <div class="button-row preview-actions">
+        <div class="button-row preview-actions" id="previewActions">
           <button class="action-btn ghost" type="button" onclick="copyLink()">复制链接</button>
-          <button class="action-btn primary" type="button" onclick="startSave()">保存到相册</button>
+          <label class="live-option" id="liveOption">
+            <input id="liveVideoToggle" type="checkbox" onchange="updateSaveChoice()" />
+            <span class="live-title">Live 视频</span>
+          </label>
+          <button class="action-btn primary" id="saveButton" type="button" onclick="startSave()">保存 10 张图片</button>
         </div>
       </div>
     </section>
@@ -504,7 +731,7 @@
       <span id="progressLabel">68%</span>
     </div>
 
-    <div class="mask show" id="clipboardMask" onclick="hideClipboard()">
+    <div class="mask" id="clipboardMask" onclick="hideClipboard()">
       <section class="dialog" onclick="event.stopPropagation()">
         <h2>检测到分享链接</h2>
         <p>剪贴板中发现可解析链接，是否直接填入并解析？<br>https://v.douyin.com/jxTKa2nJ4Oc/</p>
@@ -546,16 +773,88 @@
     </div>
   </main>
 
+  <aside class="prototype-notes" aria-label="作品识别与界面显示逻辑批注">
+    <div class="notes-card">
+      <div class="notes-kicker">仅供原型与开发交接</div>
+      <h2>解析结果决定界面</h2>
+      <p class="notes-lead">作品类型由链接解析结果自动识别，用户不需要、也不能手动切换作品类型。页面始终只显示一组“保存内容”Tabs。</p>
+
+      <section class="logic-rule">
+        <div class="logic-title"><span class="logic-dot"></span>识别为视频作品</div>
+        <div class="logic-tabs"><span>视频</span><span>封面</span><span>音频</span></div>
+        <div class="logic-copy">默认选中“视频”；不显示 Live 视频勾选按钮。底部为“复制链接 + 保存视频”，切换 Tab 后保存按钮对应变为“保存封面”或“保存音频”。</div>
+      </section>
+
+      <section class="logic-rule">
+        <div class="logic-title"><span class="logic-dot"></span>识别为普通图集</div>
+        <div class="logic-tabs"><span>图片</span><span>封面</span><span>音频</span></div>
+        <div class="logic-copy">默认选中“图片”；不显示 Live 视频勾选按钮。底部为“复制链接 + 保存图片”，切换 Tab 后保存按钮对应变为“保存封面”或“保存音频”。</div>
+      </section>
+
+      <section class="logic-rule live">
+        <div class="logic-title"><span class="logic-dot"></span>识别为 Live 图作品</div>
+        <div class="logic-tabs"><span>图片</span><span>封面</span><span>音频</span><span>□ Live 视频</span></div>
+        <div class="logic-copy">默认选中“图片”。只有“解析结果 = Live 图”并且“当前 Tab = 图片”两个条件同时满足，底部才显示“复制链接 + Live 视频勾选 + 保存图片”；切换到封面或音频后隐藏勾选按钮。</div>
+      </section>
+
+      <div class="logic-warning">“Live 视频”是附加保存选项，不是作品类型 Tab。勾选后保存原图和每张图片对应的动态视频。</div>
+    </div>
+  </aside>
+  </div>
+
   <script>
     const input = document.getElementById('shareInput');
     const previewCard = document.getElementById('previewCard');
-    const imageTab = document.getElementById('imageTab');
-    const videoTab = document.getElementById('videoTab');
+    const primaryTab = document.getElementById('primaryTab');
+    const coverTab = document.getElementById('coverTab');
+    const audioTab = document.getElementById('audioTab');
     const previewCounter = document.getElementById('previewCounter');
     const previewCaption = document.getElementById('previewCaption');
-    const thumbs = [...document.querySelectorAll('.thumb')];
+    const selectionNote = document.getElementById('selectionNote');
+    const saveButton = document.getElementById('saveButton');
+    const liveOption = document.getElementById('liveOption');
+    const liveVideoToggle = document.getElementById('liveVideoToggle');
+    const previewActions = document.getElementById('previewActions');
+    const mediaBadge = document.getElementById('mediaBadge');
+    const workTitle = document.getElementById('workTitle');
+    const workMeta = document.getElementById('workMeta');
+    const thumbsContainer = document.getElementById('thumbs');
+
+    const works = {
+      video: {
+        title: 'Lin 的视频作品',
+        meta: '作者：Lin · 视频 · 1 个视频',
+        primary: 'video',
+        primaryLabel: '视频',
+        count: 1
+      },
+      gallery: {
+        title: 'Myyu 的图文作品',
+        meta: '作者：Myyu · 图集 · 10 张',
+        primary: 'image',
+        primaryLabel: '图片',
+        count: 10
+      },
+      live: {
+        title: 'Myyu 的 Live 图作品',
+        meta: '作者：Myyu · Live 图（动态照片）· 10 张',
+        primary: 'image',
+        primaryLabel: '图片',
+        count: 10
+      }
+    };
+
+    const requestedDemoWork = new URLSearchParams(window.location.search).get('work');
+    let activeWork = works[requestedDemoWork] ? requestedDemoWork : 'live';
+    let activeResource = works[activeWork].primary;
+    let activeIndex = 0;
 
     function parseLink() {
+      // 正式应用中 activeWork 由链接解析结果返回；原型仅用 ?work=video/gallery/live 演示三种结果。
+      activeResource = works[activeWork].primary;
+      activeIndex = 0;
+      liveVideoToggle.checked = false;
+      renderPreview();
       document.getElementById('previewSection').style.display = 'flex';
       document.getElementById('previewSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
@@ -565,27 +864,108 @@
       document.getElementById('previewSection').style.display = 'none';
     }
 
-    function switchPreview(type) {
-      const video = type === 'video';
-      imageTab.classList.toggle('active', !video);
-      videoTab.classList.toggle('active', video);
-      previewCard.classList.toggle('video', video);
-      previewCounter.textContent = video ? '视频 1 / 1' : '图片 1 / 10';
-      previewCaption.textContent = video ? '无水印视频' : '图片 01';
-      thumbs.forEach((thumb, index) => thumb.classList.toggle('active', video ? index === 5 : index === 0));
+    function selectResource(type) {
+      activeResource = type;
+      activeIndex = 0;
+      renderPreview();
     }
 
     function selectThumb(index) {
-      switchPreview('image');
-      thumbs.forEach((thumb, i) => thumb.classList.toggle('active', i === index));
-      previewCounter.textContent = `图片 ${index + 1} / 10`;
-      previewCaption.textContent = `图片 ${String(index + 1).padStart(2, '0')}`;
+      activeIndex = index;
+      updateMediaDetails();
+      [...thumbsContainer.children].forEach((thumb, i) => {
+        thumb.classList.toggle('active', i === index);
+      });
+    }
+
+    function renderPreview() {
+      const work = works[activeWork];
+      const tabs = [primaryTab, coverTab, audioTab];
+      const tabTypes = [work.primary, 'cover', 'audio'];
+
+      workTitle.textContent = work.title;
+      workMeta.textContent = work.meta;
+      primaryTab.textContent = `${work.primaryLabel} ${work.count}`;
+      primaryTab.onclick = () => selectResource(work.primary);
+      tabs.forEach((tab, index) => {
+        const isActive = activeResource === tabTypes[index];
+        tab.classList.toggle('active', isActive);
+        tab.setAttribute('aria-selected', String(isActive));
+      });
+
+      // UI 规则：只有解析为 Live 图作品且当前选择图片时，才展示 Live 视频附加保存选项。
+      const showLiveOption = activeWork === 'live' && activeResource === 'image';
+      liveOption.hidden = !showLiveOption;
+      previewActions.classList.toggle('with-live-option', showLiveOption);
+      previewCard.className = `preview-card mode-${activeResource}`;
+      renderThumbs();
+      updateMediaDetails();
+      updateSaveChoice();
+    }
+
+    function renderThumbs() {
+      const work = works[activeWork];
+      const count = activeResource === work.primary ? work.count : 1;
+      const visibleCount = Math.min(count, 5);
+      thumbsContainer.innerHTML = '';
+
+      for (let index = 0; index < visibleCount; index += 1) {
+        const thumb = document.createElement('button');
+        thumb.type = 'button';
+        thumb.className = `thumb ${activeResource} ${index === activeIndex ? 'active' : ''}`;
+        thumb.setAttribute('aria-label', `${resourceName()} ${index + 1}`);
+        thumb.onclick = () => selectThumb(index);
+        if (activeResource === 'video') thumb.textContent = '▶';
+        if (activeResource === 'audio') thumb.textContent = '♫';
+        thumbsContainer.appendChild(thumb);
+      }
+    }
+
+    function resourceName() {
+      return { image: '图片', video: '视频', cover: '封面', audio: '音频' }[activeResource];
+    }
+
+    function updateMediaDetails() {
+      const work = works[activeWork];
+      const count = activeResource === work.primary ? work.count : 1;
+      const name = resourceName();
+      const captions = {
+        image: `原图 ${String(activeIndex + 1).padStart(2, '0')}`,
+        video: '无水印视频 · 1080P',
+        cover: '作品封面 · 原始尺寸',
+        audio: '作品原声 · MP3'
+      };
+      const badges = { image: 'JPG', video: 'MP4', cover: 'JPG', audio: 'MP3' };
+
+      previewCounter.textContent = `${name} ${activeIndex + 1} / ${count}`;
+      previewCaption.textContent = captions[activeResource];
+      mediaBadge.textContent = badges[activeResource];
+    }
+
+    function updateSaveChoice() {
+      const work = works[activeWork];
+      const withLiveVideo = activeWork === 'live' && activeResource === 'image' && liveVideoToggle.checked;
+      const copy = {
+        video: ['保存视频', '保存无水印视频到系统相册'],
+        cover: ['保存封面', '仅保存当前作品的原始封面'],
+        audio: ['保存音频', '提取并保存当前作品的原声'],
+        image: [`保存 ${work.count} 张图片`, activeWork === 'live' ? `将保存 ${work.count} 张原图；默认不保存动态视频` : '保存全部原图到系统相册']
+      };
+
+      if (withLiveVideo) {
+        saveButton.textContent = `保存图片 + Live 视频`;
+        selectionNote.textContent = `将保存 ${work.count} 张原图及 ${work.count} 个对应动态视频`;
+        return;
+      }
+
+      saveButton.textContent = copy[activeResource][0];
+      selectionNote.textContent = copy[activeResource][1];
     }
 
     function startSave() {
       const bubble = document.getElementById('progressBubble');
       bubble.classList.add('show');
-      toast('开始保存到系统相册');
+      toast(`开始${saveButton.textContent}`);
     }
 
     function copyLink() { toast('已复制链接'); }
@@ -594,6 +974,8 @@
     function openMine() { document.getElementById('mineMask').classList.add('show'); }
     function hideMine() { document.getElementById('mineMask').classList.remove('show'); }
     function closeMine(event) { if (event.target.id === 'mineMask') hideMine(); }
+
+    renderPreview();
   </script>
 </body>
 </html>

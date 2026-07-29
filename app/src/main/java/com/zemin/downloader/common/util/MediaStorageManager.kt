@@ -15,6 +15,7 @@ object MediaStorageManager {
     const val CACHE_DOWNLOAD_DIR = "python-downloads"
     const val MEDIA_PICTURE_DOWNLOAD_DIR = "Pictures"
     const val MEDIA_VIDEO_DOWNLOAD_DIR = "Movies"
+    const val MEDIA_AUDIO_DOWNLOAD_DIR = "Music"
     const val TEMP_EXTENSION = "tmp"
     const val EXTENSION_MP4 = "mp4"
     const val EXTENSION_MOV = "mov"
@@ -27,6 +28,7 @@ object MediaStorageManager {
     const val EXTENSION_GIF = "gif"
     const val MIME_VIDEO_PREFIX = "video/"
     const val MIME_IMAGE_PREFIX = "image/"
+    const val MIME_AUDIO_PREFIX = "audio/"
     const val MIME_VIDEO_MP4 = "video/mp4"
     const val MIME_VIDEO_QUICKTIME = "video/quicktime"
     const val MIME_AUDIO_MP4 = "audio/mp4"
@@ -118,6 +120,7 @@ object MediaStorageManager {
         return when {
             isVideoMimeType(mimeType) -> registerVideoToMediaStore(file, mimeType)
             isImageMimeType(mimeType) -> registerImageToMediaStore(file, mimeType)
+            isAudioMimeType(mimeType) -> registerAudioToMediaStore(file, mimeType)
             else -> null
         }
     }
@@ -142,6 +145,10 @@ object MediaStorageManager {
 
     private fun isImageMimeType(mimeType: String): Boolean {
         return mimeType.startsWith(MIME_IMAGE_PREFIX)
+    }
+
+    private fun isAudioMimeType(mimeType: String): Boolean {
+        return mimeType.startsWith(MIME_AUDIO_PREFIX)
     }
 
     private fun registerVideoToMediaStore(file: File, mimeType: String = MIME_VIDEO_MP4): Uri? {
@@ -196,6 +203,29 @@ object MediaStorageManager {
         }
     }
 
+    private fun registerAudioToMediaStore(file: File, mimeType: String): Uri? {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val values = ContentValues().apply {
+                put(MediaStore.Audio.Media.DISPLAY_NAME, file.name)
+                put(MediaStore.Audio.Media.MIME_TYPE, mimeType)
+                put(MediaStore.Audio.Media.RELATIVE_PATH, getAudioMediaStoreRelativePath())
+                put(MediaStore.Audio.Media.IS_PENDING, 1)
+            }
+            val uri = appContext.contentResolver.insert(
+                MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, values
+            ) ?: return null
+            appContext.contentResolver.openOutputStream(uri)?.use { output ->
+                file.inputStream().use { input -> input.copyTo(output) }
+            }
+            values.clear()
+            values.put(MediaStore.Audio.Media.IS_PENDING, 0)
+            appContext.contentResolver.update(uri, values, null, null)
+            uri
+        } else {
+            copyToPublicMediaDir(file, getLegacyAudioDownloadDir())?.let(::scanLegacyMediaFile)
+        }
+    }
+
     private fun copyToPublicMediaDir(source: File, targetDir: File): File? {
         if (!source.exists()) return null
         targetDir.mkdirs()
@@ -239,6 +269,7 @@ object MediaStorageManager {
         return when {
             isImageMimeType(mimeType) -> getImageMediaStoreRelativePath()
             isVideoMimeType(mimeType) -> getVideoMediaStoreRelativePath()
+            isAudioMimeType(mimeType) -> getAudioMediaStoreRelativePath()
             else -> null
         }
     }
@@ -255,6 +286,10 @@ object MediaStorageManager {
         return buildMediaStoreRelativePath(MEDIA_PICTURE_DOWNLOAD_DIR)
     }
 
+    fun getAudioMediaStoreRelativePath(): String {
+        return buildMediaStoreRelativePath(MEDIA_AUDIO_DOWNLOAD_DIR)
+    }
+
     private fun buildMediaStoreRelativePath(rootDir: String): String {
         return rootDir + PATH_SEPARATOR + currentType
     }
@@ -265,6 +300,10 @@ object MediaStorageManager {
 
     private fun getLegacyPictureDownloadDir(): File {
         return getLegacyPublicMediaDir(Environment.DIRECTORY_PICTURES)
+    }
+
+    private fun getLegacyAudioDownloadDir(): File {
+        return getLegacyPublicMediaDir(Environment.DIRECTORY_MUSIC)
     }
 
     private fun getLegacyPublicMediaDir(environmentDir: String): File {
