@@ -18,7 +18,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.ImageView
-import android.widget.MediaController
 import android.webkit.CookieManager
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
@@ -89,6 +88,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setupProgressBubble()
+        binding.videoPreview.bindFullscreen(this)
         readSharedText(intent)
         appUpdateManager.checkOnStart()
         binding.btnLogin.setOnClickListener {
@@ -164,6 +164,11 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         scheduleClipboardCheck()
     }
 
+    override fun onPause() {
+        binding.videoPreview.pausePlayback()
+        super.onPause()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -171,9 +176,9 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
     }
 
     override fun onDestroy() {
-        super.onDestroy()
         binding.videoPreview.stopPlayback()
         hideClipboardDialog()
+        super.onDestroy()
     }
 
     private fun resolveAndRenderPreview(inputText: String) {
@@ -382,10 +387,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         binding.btnImageTab.isSelected = tabAt(0) == selectedTab
         binding.btnCoverTab.isSelected = tabAt(1) == selectedTab
         binding.btnAudioTab.isSelected = tabAt(2) == selectedTab
-        binding.tvPlayIcon.visibility = View.GONE
-
-        val first = resources.first()
-        updatePreviewLabels(first, 0, resources.size, selectedTab)
+        updatePreviewLabels(0, resources.size, selectedTab)
         selectedPreviewIndex = 0
         renderThumbnails(resources, selectedTab)
         updatePreviewResource(0, resources, selectedTab)
@@ -413,7 +415,6 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
     private fun tabAt(index: Int): ResourceTab? = availableResourceTabs.getOrNull(index)
 
     private fun updatePreviewLabels(
-        resource: ResolvedResource,
         index: Int,
         total: Int,
         tab: ResourceTab,
@@ -431,12 +432,6 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
             )
             ResourceTab.COVER -> getString(R.string.main_preview_counter_cover)
             ResourceTab.AUDIO -> getString(R.string.main_preview_tab_audio, total)
-        }
-        binding.tvPreviewItemTitle.text = when (resource.mediaType) {
-            "video" -> getString(R.string.main_preview_item_video)
-            "cover" -> getString(R.string.main_preview_item_cover)
-            "audio" -> resource.title.ifBlank { getString(R.string.main_preview_item_audio) }
-            else -> getString(R.string.main_preview_item_image_format, index + 1)
         }
     }
 
@@ -459,20 +454,6 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
             }
             ResourceTab.COVER -> getString(R.string.main_save_cover)
             ResourceTab.AUDIO -> getString(R.string.main_save_audio)
-        }
-        binding.tvSelectionNote.text = when (selectedResourceTab) {
-            ResourceTab.VIDEO -> getString(R.string.main_selection_video)
-            ResourceTab.IMAGE -> if (includeLive) {
-                getString(
-                    R.string.main_selection_images_live,
-                    resourceCount,
-                    preview.counts.liveVideos,
-                )
-            } else {
-                getString(R.string.main_selection_images, resourceCount)
-            }
-            ResourceTab.COVER -> getString(R.string.main_selection_cover)
-            ResourceTab.AUDIO -> getString(R.string.main_selection_audio)
         }
     }
 
@@ -552,7 +533,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         val resource = resources.getOrNull(index) ?: return
         selectedPreviewIndex = index
         updateThumbnailSelection(index)
-        updatePreviewLabels(resource, index, resources.size, tab)
+        updatePreviewLabels(index, resources.size, tab)
         if (tab == ResourceTab.VIDEO) {
             playPreviewVideo(resource)
         } else {
@@ -609,34 +590,22 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         binding.ivPreviewCover.visibility = View.GONE
         if (videoUrl.isBlank()) {
             stopPreviewVideo()
-            binding.tvPlayIcon.visibility = View.VISIBLE
+            binding.videoPreview.showUnavailable()
             return
         }
         previewImageLoadToken.incrementAndGet()
         binding.videoPreview.visibility = View.VISIBLE
-        binding.tvPlayIcon.visibility = View.GONE
-        val controller = MediaController(this)
-        controller.setAnchorView(binding.videoPreview)
-        binding.videoPreview.setMediaController(controller)
-        binding.videoPreview.setOnPreparedListener { player ->
-            player.isLooping = true
-            binding.videoPreview.setVideoSize(player.videoWidth, player.videoHeight)
-            binding.videoPreview.start()
-        }
-        binding.videoPreview.setOnErrorListener { _, _, _ ->
-            binding.videoPreview.visibility = View.GONE
-            binding.tvPlayIcon.visibility = View.VISIBLE
-            true
-        }
-        binding.videoPreview.setVideoURI(Uri.parse(videoUrl), previewRequestHeaders())
-        binding.videoPreview.requestFocus()
+        binding.videoPreview.setVideo(
+            uri = Uri.parse(videoUrl),
+            headers = previewRequestHeaders(),
+            autoPlay = true,
+        )
     }
 
     private fun stopPreviewVideo() {
         binding.videoPreview.stopPlayback()
         binding.videoPreview.clearVideoSize()
         binding.videoPreview.visibility = View.GONE
-        binding.tvPlayIcon.visibility = View.GONE
     }
 
     private fun thumbnailUrl(resource: ResolvedResource?, preview: PyResolveResult?): String {
