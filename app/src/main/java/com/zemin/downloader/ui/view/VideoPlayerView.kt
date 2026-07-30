@@ -22,6 +22,7 @@ import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import com.zemin.downloader.R
+import com.zemin.downloader.ui.motion.UiMotion
 
 class VideoPlayerView @JvmOverloads constructor(
     context: Context,
@@ -86,6 +87,14 @@ class VideoPlayerView @JvmOverloads constructor(
         fullscreenButton = findViewById(R.id.btnPlayerFullscreen)
 
         setBackgroundColor(context.getColor(R.color.dy_player_canvas))
+        listOf(
+            playPauseButton,
+            rewindButton,
+            forwardButton,
+            speedButton,
+            muteButton,
+            fullscreenButton,
+        ).forEach { UiMotion.bindPressFeedback(it, pressedScale = 0.92f) }
         videoSurface.setOnClickListener { toggleControls() }
         controlsOverlay.setOnClickListener { hideControls() }
         playPauseButton.setOnClickListener { togglePlayback() }

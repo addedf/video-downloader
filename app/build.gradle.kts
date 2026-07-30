@@ -63,6 +63,9 @@ android {
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
+    implementation(libs.androidx.dynamicanimation)
+    implementation(libs.coil)
+    implementation(libs.coil.network.okhttp)
     implementation(libs.material)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

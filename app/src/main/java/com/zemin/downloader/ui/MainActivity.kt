@@ -5,21 +5,21 @@ import android.content.ClipDescription
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
-import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.RectF
 import android.net.Uri
 import android.os.Bundle
 import android.os.SystemClock
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.Gravity
-import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.webkit.CookieManager
 import android.widget.TextView
+import androidx.activity.addCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -45,9 +45,12 @@ import com.zemin.downloader.common.util.formatBytes
 import com.zemin.downloader.common.util.toast
 import com.zemin.downloader.databinding.ActivityMainBinding
 import com.zemin.downloader.impl.DownloadType
+import com.zemin.downloader.ui.motion.MotionBottomSheetController
+import com.zemin.downloader.ui.motion.UiMotion
 import com.zemin.downloader.ui.util.PlatformResolver
 import com.zemin.downloader.ui.util.extractSharedText
 import com.zemin.downloader.ui.preview.PreviewUiPolicy
+import com.zemin.downloader.ui.preview.PreviewImageController
 import com.zemin.downloader.ui.preview.ResourceTab
 import com.zemin.downloader.ui.view.DyActionButton
 import com.zemin.downloader.update.AppUpdateManager
@@ -55,8 +58,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
-import java.net.HttpURLConnection
-import java.net.URL
 import java.util.concurrent.atomic.AtomicLong
 
 class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::inflate) {
@@ -82,11 +83,23 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
     private var systemInsetLeft = 0
     private var systemInsetRight = 0
     private var progressBubblePositioned = false
+    private lateinit var mineSheetController: MotionBottomSheetController
+    private lateinit var previewImages: PreviewImageController
     private val lastProgressUiUpdatedAt = AtomicLong(PROGRESS_RECORD_INIT_TIME)
-    private val previewImageLoadToken = AtomicLong(PREVIEW_LOAD_INIT_TOKEN)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        previewImages = PreviewImageController(
+            context = this,
+            lifecycleOwner = this,
+            scope = lifecycleScope,
+            previewCard = binding.previewCard,
+            ambientView = binding.ivPreviewAmbient,
+            ambientScrim = binding.previewAmbientScrim,
+            currentView = binding.ivPreviewCover,
+            incomingView = binding.ivPreviewCoverIncoming,
+        )
+        setupMotion()
         setupProgressBubble()
         binding.videoPreview.bindFullscreen(this)
         readSharedText(intent)
@@ -101,12 +114,20 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         binding.btnDownload.setOnClickListener {
             val input = binding.etUrl.text.toString().trim()
             when {
-                input.isEmpty() -> toast(getString(R.string.main_toast_empty_input, currentTitle))
-                isDownloading -> toast(getString(R.string.main_toast_task_running))
-                else -> resolveAndRenderPreview(input)
+                input.isEmpty() -> {
+                    showError(getString(R.string.main_toast_empty_input, currentTitle))
+                }
+                isDownloading -> {
+                    showError(getString(R.string.main_toast_task_running))
+                }
+                else -> {
+                    UiMotion.performHaptic(binding.btnDownload, UiMotion.Haptic.TICK)
+                    resolveAndRenderPreview(input)
+                }
             }
         }
         binding.btnClear.setOnClickListener {
+            UiMotion.performHaptic(binding.btnClear, UiMotion.Haptic.TICK)
             clearLinkAndCancelDownload()
         }
         binding.etUrl.addTextChangedListener(object : TextWatcher {
@@ -132,21 +153,32 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
             refreshHistoryUi()
             toast(getString(R.string.main_toast_history_cleared))
         }
-        binding.btnImageTab.setOnClickListener { selectResourceTab(tabAt(0)) }
-        binding.btnCoverTab.setOnClickListener { selectResourceTab(tabAt(1)) }
-        binding.btnAudioTab.setOnClickListener { selectResourceTab(tabAt(2)) }
-        binding.checkLiveVideo.setOnCheckedChangeListener { _, _ -> refreshSelectionUi() }
-        binding.btnCopyLink.setOnClickListener { copyCurrentPreviewLink() }
-        binding.btnSaveSheet.setOnClickListener { saveCurrentPreview() }
-        binding.btnMine.setOnClickListener { showMineSheet() }
+        binding.btnImageTab.setOnClickListener { selectResourceTab(tabAt(0), userInitiated = true) }
+        binding.btnCoverTab.setOnClickListener { selectResourceTab(tabAt(1), userInitiated = true) }
+        binding.btnAudioTab.setOnClickListener { selectResourceTab(tabAt(2), userInitiated = true) }
+        binding.checkLiveVideo.setOnCheckedChangeListener { button, _ ->
+            if (button.isPressed) UiMotion.performHaptic(button, UiMotion.Haptic.TICK)
+            refreshSelectionUi()
+        }
+        binding.btnCopyLink.setOnClickListener {
+            copyCurrentPreviewLink()
+            UiMotion.performHaptic(binding.btnCopyLink, UiMotion.Haptic.CONFIRM)
+        }
+        binding.btnSaveSheet.setOnClickListener {
+            UiMotion.performHaptic(binding.btnSaveSheet, UiMotion.Haptic.TICK)
+            saveCurrentPreview()
+        }
+        binding.btnMine.setOnClickListener {
+            UiMotion.performHaptic(binding.btnMine, UiMotion.Haptic.TICK)
+            showMineSheet()
+        }
         binding.btnCloseMineSheet.setOnClickListener { hideSheets() }
-        binding.sheetMask.setOnClickListener { hideSheets() }
-        binding.mineSheet.setOnClickListener { }
         binding.dialogMask.setOnClickListener { hideClipboardDialog() }
         binding.clipboardDialogPanel.setOnClickListener { }
         binding.btnClipboardDismiss.setOnClickListener { hideClipboardDialog() }
         binding.btnClipboardParse.setOnClickListener {
             val input = pendingClipboardInput.orEmpty()
+            UiMotion.performHaptic(binding.btnClipboardParse, UiMotion.Haptic.TICK)
             hideClipboardDialog()
             if (input.isNotBlank()) {
                 setInputText(input)
@@ -176,8 +208,10 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
     }
 
     override fun onDestroy() {
+        previewImages.dispose()
         binding.videoPreview.stopPlayback()
-        hideClipboardDialog()
+        mineSheetController.hideImmediately()
+        hideClipboardDialog(immediate = true)
         super.onDestroy()
     }
 
@@ -262,12 +296,6 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
                     progressListener = createDownloadProgressListener(),
                 )
 
-                binding.progressBubble.showProgress(
-                    PROGRESS_COMPLETE,
-                    getString(R.string.main_status_download_done),
-                )
-                progressDetailMessage = getString(R.string.main_status_download_done)
-
                 val registeredUris = result.files.map(::File).mapNotNull { file ->
                     StoreModule.registerMediaFile(file)?.also {
                         StoreModule.deleteTemporaryDownloadFile(file)
@@ -275,6 +303,9 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
                 }
 
                 if (result.ok || result.skipped > 0) {
+                    progressDetailMessage = getString(R.string.main_status_download_done)
+                    binding.progressBubble.showSuccess(progressDetailMessage)
+                    UiMotion.performHaptic(binding.progressBubble, UiMotion.Haptic.CONFIRM)
                     StoreModule.cleanupDownloadSidecars()
                     saveDownloadHistory(
                         sourceUrl = historySourceUrl,
@@ -297,7 +328,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
                         errorMessage = errorMessage,
                         createdAt = taskStartedAt,
                     )
-                    showError(errorMessage)
+                    showDownloadFailure(errorMessage)
                 }
             } catch (e: Exception) {
                 val errorMessage = getString(
@@ -313,7 +344,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
                     errorMessage = errorMessage,
                     createdAt = taskStartedAt,
                 )
-                showError(errorMessage)
+                showDownloadFailure(errorMessage)
             } finally {
                 isDownloading = false
                 setUiEnabled(true)
@@ -340,7 +371,6 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
 
         currentPreview = preview
         currentPreviewInput = inputText
-        binding.previewSection.visibility = View.VISIBLE
         binding.tvPreviewTitle.text = title
         binding.tvPreviewMeta.text = getString(
             R.string.main_preview_meta_format,
@@ -352,22 +382,23 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         refreshActionButton()
         selectedResourceTab = uiState.defaultTab
         binding.checkLiveVideo.isChecked = false
-        selectResourceTab(selectedResourceTab)
+        selectResourceTab(selectedResourceTab, userInitiated = false)
+        UiMotion.revealFromBelow(binding.previewSection)
+        UiMotion.performHaptic(binding.previewSection, UiMotion.Haptic.CONFIRM)
     }
 
     private fun clearPreview() {
         currentPreview = null
         currentPreviewInput = null
-        previewImageLoadToken.incrementAndGet()
-        binding.previewSection.visibility = View.GONE
-        binding.ivPreviewCover.setImageDrawable(null)
-        binding.ivPreviewCover.visibility = View.GONE
+        UiMotion.concealBelow(binding.previewSection)
+        previewImages.clear()
         binding.videoPreview.stopPlayback()
         binding.videoPreview.visibility = View.GONE
         binding.thumbContainer.removeAllViews()
         selectedPreviewIndex = 0
         binding.checkLiveVideo.isChecked = false
         binding.checkLiveVideo.visibility = View.GONE
+        binding.previewTabIndicator.visibility = View.INVISIBLE
         availableResourceTabs = emptyList()
         hideSheets()
         refreshActionButton()
@@ -377,21 +408,40 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         binding.btnDownload.text = getString(R.string.main_button_download)
     }
 
-    private fun selectResourceTab(tab: ResourceTab?) {
+    private fun selectResourceTab(tab: ResourceTab?, userInitiated: Boolean) {
         val selectedTab = tab ?: return
         val preview = currentPreview ?: return
         val resources = PreviewUiPolicy.resourcesFor(preview, selectedTab)
         if (resources.isEmpty()) return
 
+        val changed = selectedResourceTab != selectedTab
         selectedResourceTab = selectedTab
         binding.btnImageTab.isSelected = tabAt(0) == selectedTab
         binding.btnCoverTab.isSelected = tabAt(1) == selectedTab
         binding.btnAudioTab.isSelected = tabAt(2) == selectedTab
+        val selectedButton = listOf(
+            binding.btnImageTab,
+            binding.btnCoverTab,
+            binding.btnAudioTab,
+        )[availableResourceTabs.indexOf(selectedTab)]
+        val updateIndicator = {
+            if (currentPreview === preview && selectedResourceTab == selectedTab) {
+                UiMotion.animateTabIndicator(
+                    binding.previewTabIndicator,
+                    selectedButton,
+                    animated = userInitiated && changed,
+                )
+            }
+        }
+        if (userInitiated) updateIndicator() else binding.previewTabButtons.post { updateIndicator() }
         updatePreviewLabels(0, resources.size, selectedTab)
         selectedPreviewIndex = 0
         renderThumbnails(resources, selectedTab)
         updatePreviewResource(0, resources, selectedTab)
         refreshSelectionUi()
+        if (userInitiated && changed) {
+            UiMotion.performHaptic(selectedButton, UiMotion.Haptic.TICK)
+        }
     }
 
     private fun configureTabButtons(tabs: List<ResourceTab>, preview: PyResolveResult) {
@@ -475,6 +525,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
     }
 
     private fun renderThumbnails(resources: List<ResolvedResource>, tab: ResourceTab) {
+        previewImages.clearThumbnails()
         binding.thumbContainer.removeAllViews()
         resources.forEachIndexed { index, resource ->
             val thumb = FrameLayout(this).apply {
@@ -489,7 +540,11 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
                     else R.drawable.bg_thumb
                 )
                 setOnClickListener {
+                    val changed = selectedPreviewIndex != index
                     updatePreviewResource(index, resources, tab)
+                    if (changed) {
+                        UiMotion.performHaptic(this, UiMotion.Haptic.TICK)
+                    }
                 }
             }
             val imageView = ImageView(this).apply {
@@ -519,7 +574,12 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
             binding.thumbContainer.addView(thumb)
             val thumbUrl = thumbnailUrl(resource, currentPreview)
             if (thumbUrl.isNotBlank()) {
-                loadBitmapInto(thumbUrl, imageView, fallback, PREVIEW_THUMB_CONNECT_TIMEOUT_MS, PREVIEW_THUMB_READ_TIMEOUT_MS)
+                previewImages.loadThumbnail(
+                    imageUrl = thumbUrl,
+                    imageView = imageView,
+                    fallback = fallback,
+                    headers = previewRequestHeaders(),
+                )
             }
         }
     }
@@ -538,7 +598,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
             playPreviewVideo(resource)
         } else {
             stopPreviewVideo()
-            loadPreviewImage(preview, resource)
+            loadPreviewImage(preview, resource, resources, index)
         }
     }
 
@@ -556,44 +616,45 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         else -> getString(R.string.main_media_type_unknown)
     }
 
-    private fun loadPreviewImage(preview: PyResolveResult, resource: ResolvedResource? = null) {
+    private fun loadPreviewImage(
+        preview: PyResolveResult,
+        resource: ResolvedResource? = null,
+        resources: List<ResolvedResource> = emptyList(),
+        index: Int = 0,
+    ) {
         val imageUrl = thumbnailUrl(resource, preview)
         if (imageUrl.isBlank()) {
-            binding.ivPreviewCover.visibility = View.GONE
+            previewImages.hideForVideo()
             return
         }
+        val adjacentUrls = listOf(index - 1, index + 1)
+            .mapNotNull(resources::getOrNull)
+            .map { thumbnailUrl(it, preview) }
+            .filter { it.isNotBlank() && it != imageUrl }
+        previewImages.load(
+            imageUrl = imageUrl,
+            adjacentUrls = adjacentUrls,
+            headers = previewRequestHeaders(),
+        )
+    }
 
-        val token = previewImageLoadToken.incrementAndGet()
-        binding.ivPreviewCover.visibility = View.VISIBLE
-        binding.ivPreviewCover.setImageDrawable(null)
-        lifecycleScope.launch(Dispatchers.IO) {
-            val bitmap = fetchBitmap(
-                imageUrl,
-                PREVIEW_IMAGE_CONNECT_TIMEOUT_MS,
-                PREVIEW_IMAGE_READ_TIMEOUT_MS,
-            )
-
-            launch(Dispatchers.Main) {
-                if (token != previewImageLoadToken.get()) return@launch
-                if (bitmap != null) {
-                    binding.ivPreviewCover.setImageBitmap(bitmap)
-                    binding.ivPreviewCover.visibility = View.VISIBLE
-                } else {
-                    binding.ivPreviewCover.visibility = View.GONE
-                }
-            }
-        }
+    internal fun loadPreviewImageForTesting(imageUrl: String) {
+        binding.previewSection.visibility = View.VISIBLE
+        previewImages.load(
+            imageUrl = imageUrl,
+            adjacentUrls = emptyList(),
+            headers = emptyMap(),
+        )
     }
 
     private fun playPreviewVideo(resource: ResolvedResource) {
         val videoUrl = resource.downloadUrls.firstOrNull().orEmpty()
-        binding.ivPreviewCover.visibility = View.GONE
+        previewImages.hideForVideo()
         if (videoUrl.isBlank()) {
             stopPreviewVideo()
             binding.videoPreview.showUnavailable()
             return
         }
-        previewImageLoadToken.incrementAndGet()
         binding.videoPreview.visibility = View.VISIBLE
         binding.videoPreview.setVideo(
             uri = Uri.parse(videoUrl),
@@ -620,38 +681,6 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
                 .orEmpty()
         }
     }
-
-    private fun loadBitmapInto(
-        imageUrl: String,
-        imageView: ImageView,
-        fallback: TextView,
-        connectTimeoutMs: Int,
-        readTimeoutMs: Int,
-    ) {
-        lifecycleScope.launch(Dispatchers.IO) {
-            val bitmap = fetchBitmap(imageUrl, connectTimeoutMs, readTimeoutMs)
-            launch(Dispatchers.Main) {
-                if (bitmap != null) {
-                    imageView.setImageBitmap(bitmap)
-                    fallback.visibility = View.GONE
-                } else {
-                    fallback.visibility = View.VISIBLE
-                }
-            }
-        }
-    }
-
-    private fun fetchBitmap(imageUrl: String, connectTimeoutMs: Int, readTimeoutMs: Int) =
-        runCatching {
-            val connection = URL(imageUrl).openConnection() as HttpURLConnection
-            connection.connectTimeout = connectTimeoutMs
-            connection.readTimeout = readTimeoutMs
-            connection.instanceFollowRedirects = true
-            previewRequestHeaders().forEach { (key, value) ->
-                connection.setRequestProperty(key, value)
-            }
-            connection.inputStream.use { BitmapFactory.decodeStream(it) }
-        }.getOrNull()
 
     private fun previewRequestHeaders(): Map<String, String> {
         val headers = linkedMapOf(
@@ -680,16 +709,35 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         startDownload(input, preview, buildDownloadRequest(preview))
     }
 
+    private fun setupMotion() {
+        mineSheetController = MotionBottomSheetController(
+            container = binding.sheetMask,
+            scrim = binding.sheetScrim,
+            sheet = binding.mineSheet,
+        )
+        UiMotion.bindPressFeedback(binding.btnMine)
+        UiMotion.bindPressFeedback(binding.checkLiveVideo, pressedScale = 0.98f)
+        onBackPressedDispatcher.addCallback(this) {
+            when {
+                binding.dialogMask.visibility == View.VISIBLE -> hideClipboardDialog()
+                mineSheetController.isShowing -> hideSheets()
+                else -> {
+                    isEnabled = false
+                    onBackPressedDispatcher.onBackPressed()
+                    isEnabled = true
+                }
+            }
+        }
+    }
+
     private fun showMineSheet() {
         refreshLoginState()
         refreshHistoryUi()
-        binding.sheetMask.visibility = View.VISIBLE
-        binding.mineSheet.visibility = View.VISIBLE
+        mineSheetController.show()
     }
 
     private fun hideSheets() {
-        binding.sheetMask.visibility = View.GONE
-        binding.mineSheet.visibility = View.GONE
+        mineSheetController.hide()
     }
 
     private fun showClipboardDialog(input: String) {
@@ -698,12 +746,20 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
             R.string.main_clipboard_dialog_message_format,
             input,
         )
-        binding.dialogMask.visibility = View.VISIBLE
+        UiMotion.showDialog(binding.dialogMask, binding.clipboardDialogPanel)
     }
 
-    private fun hideClipboardDialog() {
-        binding.dialogMask.visibility = View.GONE
-        pendingClipboardInput = null
+    private fun hideClipboardDialog(immediate: Boolean = false) {
+        if (immediate) {
+            binding.dialogMask.animate().cancel()
+            binding.clipboardDialogPanel.animate().cancel()
+            binding.dialogMask.visibility = View.GONE
+            pendingClipboardInput = null
+            return
+        }
+        UiMotion.hideDialog(binding.dialogMask, binding.clipboardDialogPanel) {
+            pendingClipboardInput = null
+        }
     }
 
     private fun styleActionButtons() {
@@ -771,50 +827,22 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         binding.progressBubble.setOnClickListener {
             if (progressDetailMessage.isNotBlank()) toast(progressDetailMessage)
         }
-        var downRawX = 0f
-        var downRawY = 0f
-        var startX = 0f
-        var startY = 0f
-        var dragged = false
-        binding.progressBubble.setOnTouchListener { bubble, event ->
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    downRawX = event.rawX
-                    downRawY = event.rawY
-                    startX = bubble.x
-                    startY = bubble.y
-                    dragged = false
-                    true
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    val deltaX = event.rawX - downRawX
-                    val deltaY = event.rawY - downRawY
-                    if (!dragged && (kotlin.math.abs(deltaX) > dp(4) || kotlin.math.abs(deltaY) > dp(4))) {
-                        dragged = true
-                    }
-                    if (dragged) {
-                        progressBubblePositioned = true
-                        val minX = systemInsetLeft + dp(8).toFloat()
-                        val maxX = (binding.root.width - systemInsetRight - bubble.width - dp(8))
-                            .coerceAtLeast(minX.toInt()).toFloat()
-                        val minY = systemInsetTop + dp(8).toFloat()
-                        val bottomBoundary = binding.bottomNav.top.takeIf { it > 0 }
-                            ?: (binding.root.height - systemInsetBottom)
-                        val maxY = (bottomBoundary - bubble.height - dp(8))
-                            .coerceAtLeast(minY.toInt()).toFloat()
-                        bubble.x = (startX + deltaX).coerceIn(minX, maxX)
-                        bubble.y = (startY + deltaY).coerceIn(minY, maxY)
-                    }
-                    true
-                }
-                MotionEvent.ACTION_UP -> {
-                    if (!dragged) bubble.performClick()
-                    true
-                }
-                MotionEvent.ACTION_CANCEL -> true
-                else -> false
-            }
-        }
+        UiMotion.bindEdgeSnap(
+            view = binding.progressBubble,
+            boundsProvider = {
+                val bubble = binding.progressBubble
+                val minX = systemInsetLeft + dp(8).toFloat()
+                val maxX = (binding.root.width - systemInsetRight - bubble.width - dp(8))
+                    .coerceAtLeast(minX.toInt()).toFloat()
+                val minY = systemInsetTop + dp(8).toFloat()
+                val bottomBoundary = binding.bottomNav.top.takeIf { it > 0 }
+                    ?: (binding.root.height - systemInsetBottom)
+                val maxY = (bottomBoundary - bubble.height - dp(8))
+                    .coerceAtLeast(minY.toInt()).toFloat()
+                RectF(minX, minY, maxX, maxY)
+            },
+            onDragStarted = { progressBubblePositioned = true },
+        )
     }
 
     override fun applySystemBarInsets(view: View) {
@@ -1075,13 +1103,24 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         binding.btnClear.isEnabled = true
     }
 
+    private fun showDownloadFailure(message: String?) {
+        val detail = message?.takeIf { it.isNotBlank() }
+            ?: getString(R.string.main_error_unknown)
+        progressDetailMessage = detail
+        binding.progressBubble.showError(detail)
+        showError(detail)
+    }
+
     private fun showError(message: String?) {
-        if (!message.isNullOrEmpty()) toast(message)
+        if (message.isNullOrEmpty()) return
+        UiMotion.reject(binding.downloadSection)
+        UiMotion.performHaptic(binding.downloadSection, UiMotion.Haptic.REJECT)
+        toast(message)
     }
 
     private fun showUnsupportedLink() {
         clearPreview()
-        toast(getString(R.string.main_toast_only_douyin_supported))
+        showError(getString(R.string.main_toast_only_douyin_supported))
     }
 
     private fun createDownloadProgressListener(): DownloadProgressListener =
@@ -1134,11 +1173,6 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         const val APP_HEADER_HEIGHT_DP = 48
         const val BOTTOM_NAV_HEIGHT_DP = 58
         const val CONTENT_BOTTOM_NAV_SPACE_DP = 64
-        const val PREVIEW_LOAD_INIT_TOKEN = 0L
-        const val PREVIEW_IMAGE_CONNECT_TIMEOUT_MS = 5000
-        const val PREVIEW_IMAGE_READ_TIMEOUT_MS = 8000
-        const val PREVIEW_THUMB_CONNECT_TIMEOUT_MS = 3000
-        const val PREVIEW_THUMB_READ_TIMEOUT_MS = 5000
         const val PREVIEW_USER_AGENT =
             "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36"
         const val PREVIEW_REFERER = "https://www.douyin.com/"

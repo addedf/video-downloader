@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -141,38 +142,51 @@
                     android:textColor="@color/dy_text_muted"
                     android:textSize="10sp" />
 
-                <LinearLayout
+                <FrameLayout
                     android:id="@+id/previewTabs"
                     android:layout_width="match_parent"
                     android:layout_height="28dp"
                     android:layout_marginTop="4dp"
                     android:background="@drawable/bg_tabs"
-                    android:orientation="horizontal"
                     android:padding="2dp">
 
-                    <com.zemin.downloader.ui.view.DyTabButton
-                        android:id="@+id/btnImageTab"
+                    <View
+                        android:id="@+id/previewTabIndicator"
                         android:layout_width="0dp"
                         android:layout_height="match_parent"
-                        android:layout_weight="1"
-                        android:text="@string/main_preview_tab_image" />
+                        android:background="@drawable/bg_tab_indicator"
+                        android:visibility="invisible" />
 
-                    <com.zemin.downloader.ui.view.DyTabButton
-                        android:id="@+id/btnCoverTab"
-                        android:layout_width="0dp"
+                    <LinearLayout
+                        android:id="@+id/previewTabButtons"
+                        android:layout_width="match_parent"
                         android:layout_height="match_parent"
-                        android:layout_marginStart="2dp"
-                        android:layout_weight="1"
-                        android:text="@string/main_preview_tab_cover" />
+                        android:orientation="horizontal">
 
-                    <com.zemin.downloader.ui.view.DyTabButton
-                        android:id="@+id/btnAudioTab"
-                        android:layout_width="0dp"
-                        android:layout_height="match_parent"
-                        android:layout_marginStart="2dp"
-                        android:layout_weight="1"
-                        android:text="@string/main_preview_tab_audio" />
-                </LinearLayout>
+                        <com.zemin.downloader.ui.view.DyTabButton
+                            android:id="@+id/btnImageTab"
+                            android:layout_width="0dp"
+                            android:layout_height="match_parent"
+                            android:layout_weight="1"
+                            android:text="@string/main_preview_tab_image" />
+
+                        <com.zemin.downloader.ui.view.DyTabButton
+                            android:id="@+id/btnCoverTab"
+                            android:layout_width="0dp"
+                            android:layout_height="match_parent"
+                            android:layout_marginStart="2dp"
+                            android:layout_weight="1"
+                            android:text="@string/main_preview_tab_cover" />
+
+                        <com.zemin.downloader.ui.view.DyTabButton
+                            android:id="@+id/btnAudioTab"
+                            android:layout_width="0dp"
+                            android:layout_height="match_parent"
+                            android:layout_marginStart="2dp"
+                            android:layout_weight="1"
+                            android:text="@string/main_preview_tab_audio" />
+                    </LinearLayout>
+                </FrameLayout>
 
                 <LinearLayout
                     android:id="@+id/previewBody"
@@ -190,11 +204,37 @@
                         android:layout_weight="1">
 
                         <ImageView
+                            android:id="@+id/ivPreviewAmbient"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:importantForAccessibility="no"
+                            android:scaleType="centerCrop"
+                            android:scaleX="1.08"
+                            android:scaleY="1.08"
+                            android:visibility="gone" />
+
+                        <View
+                            android:id="@+id/previewAmbientScrim"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:background="@color/dy_preview_ambient_scrim"
+                            android:importantForAccessibility="no"
+                            android:visibility="gone" />
+
+                        <ImageView
                             android:id="@+id/ivPreviewCover"
                             android:layout_width="match_parent"
                             android:layout_height="match_parent"
-                            android:adjustViewBounds="true"
                             android:contentDescription="@string/main_preview_cover_desc"
+                            android:scaleType="fitCenter"
+                            android:visibility="gone" />
+
+                        <ImageView
+                            android:id="@+id/ivPreviewCoverIncoming"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:contentDescription="@string/main_preview_cover_desc"
+                            android:importantForAccessibility="no"
                             android:scaleType="fitCenter"
                             android:visibility="gone" />
 
@@ -385,14 +425,19 @@
         </LinearLayout>
     </FrameLayout>
 
-    <FrameLayout
+    <androidx.coordinatorlayout.widget.CoordinatorLayout
         android:id="@+id/sheetMask"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#73050507"
-        android:clickable="true"
-        android:focusable="true"
         android:visibility="gone">
+
+        <View
+            android:id="@+id/sheetScrim"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="#73050507"
+            android:clickable="true"
+            android:focusable="true" />
 
         <LinearLayout
             android:id="@+id/mineSheet"
@@ -405,7 +450,12 @@
             android:paddingTop="10dp"
             android:paddingEnd="16dp"
             android:paddingBottom="16dp"
-            android:visibility="gone">
+            app:behavior_draggable="true"
+            app:behavior_fitToContents="true"
+            app:behavior_hideable="true"
+            app:behavior_peekHeight="0dp"
+            app:behavior_skipCollapsed="true"
+            app:layout_behavior="@string/bottom_sheet_behavior">
 
             <View
                 android:layout_width="42dp"
@@ -542,5 +592,5 @@
                 android:layout_marginTop="14dp"
                 android:text="@string/main_button_close" />
         </LinearLayout>
-    </FrameLayout>
+    </androidx.coordinatorlayout.widget.CoordinatorLayout>
 </FrameLayout>

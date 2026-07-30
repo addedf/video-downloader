@@ -10,6 +10,7 @@ import android.view.Gravity
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.core.content.ContextCompat
 import com.zemin.downloader.R
+import com.zemin.downloader.ui.motion.UiMotion
 
 class DyActionButton @JvmOverloads constructor(
     context: Context,
@@ -34,6 +35,7 @@ class DyActionButton @JvmOverloads constructor(
         typeface = android.graphics.Typeface.DEFAULT_BOLD
         isClickable = true
         isFocusable = true
+        UiMotion.bindPressFeedback(this)
         setStyle(Style.PRIMARY)
     }
 
