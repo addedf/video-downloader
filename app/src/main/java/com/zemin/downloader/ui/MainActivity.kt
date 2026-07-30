@@ -53,12 +53,18 @@ import com.zemin.downloader.ui.preview.PreviewUiPolicy
 import com.zemin.downloader.ui.preview.PreviewImageController
 import com.zemin.downloader.ui.preview.ResourceTab
 import com.zemin.downloader.ui.view.DyActionButton
+import com.zemin.downloader.ui.view.ProgressBubbleDockSide
+import com.zemin.downloader.ui.view.ProgressBubblePolicy
+import com.zemin.downloader.ui.view.ProgressBubbleStage
 import com.zemin.downloader.update.AppUpdateManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.concurrent.atomic.AtomicLong
+import kotlin.math.roundToInt
 
 class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::inflate) {
     private val loginLauncher =
@@ -77,12 +83,13 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
     private var selectedResourceTab: ResourceTab = ResourceTab.IMAGE
     private var availableResourceTabs: List<ResourceTab> = emptyList()
     private var selectedPreviewIndex = 0
-    private var progressDetailMessage = ""
     private var systemInsetTop = 0
     private var systemInsetBottom = 0
     private var systemInsetLeft = 0
     private var systemInsetRight = 0
     private var progressBubblePositioned = false
+    private var progressBubbleDockSide = ProgressBubbleDockSide.RIGHT
+    private var progressHideJob: Job? = null
     private lateinit var mineSheetController: MotionBottomSheetController
     private lateinit var previewImages: PreviewImageController
     private val lastProgressUiUpdatedAt = AtomicLong(PROGRESS_RECORD_INIT_TIME)
@@ -208,6 +215,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
     }
 
     override fun onDestroy() {
+        progressHideJob?.cancel()
         previewImages.dispose()
         binding.videoPreview.stopPlayback()
         mineSheetController.hideImmediately()
@@ -229,7 +237,11 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
             if (!ensureLoggedIn()) return@launch
 
             setUiEnabled(false)
-            showIndeterminateProgress(getString(R.string.main_progress_resolving))
+            cancelProgressBubbleHide()
+            binding.progressBubble.showResolving(
+                primaryText = getString(R.string.main_progress_resolving),
+                detailText = getString(R.string.main_progress_resolving_detail),
+            )
             clearPreview()
             try {
                 val preview = DownloadModule.resolve(result.normalizedInput)
@@ -272,10 +284,17 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
 
         isDownloading = true
         setUiEnabled(false)
-        showIndeterminateProgress(getString(R.string.main_progress_preparing))
+        cancelProgressBubbleHide()
+        binding.progressBubble.showPreparing(
+            primaryText = getString(R.string.main_progress_preparing),
+            detailText = getString(R.string.main_progress_preparing_detail),
+        )
         lastProgressUiUpdatedAt.set(PROGRESS_RECORD_INIT_TIME)
 
         lifecycleScope.launch {
+            var progressHideDelayMs = ProgressBubblePolicy.resultHideDelay(
+                ProgressBubbleStage.SUCCESS
+            )
             val taskStartedAt = System.currentTimeMillis()
             val historySourceUrl = preview?.sourceUrl ?: shareText
             val historyTitle = preview?.title?.takeIf { it.isNotBlank() } ?: getString(
@@ -289,24 +308,38 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
                 }
             } ?: preview?.mediaType ?: currentType
             try {
-                StoreModule.cleanupDownloadCache()
+                withContext(Dispatchers.IO) {
+                    StoreModule.cleanupDownloadCache()
+                }
                 val result = DownloadModule.download(
                     inputText = shareText,
                     request = request,
                     progressListener = createDownloadProgressListener(),
                 )
 
-                val registeredUris = result.files.map(::File).mapNotNull { file ->
-                    StoreModule.registerMediaFile(file)?.also {
-                        StoreModule.deleteTemporaryDownloadFile(file)
+                if (result.files.isNotEmpty()) {
+                    binding.progressBubble.showFinalizing(
+                        primaryText = getString(R.string.main_progress_finalizing),
+                        detailText = getString(R.string.main_progress_finalizing_detail),
+                    )
+                }
+                val registeredUris = withContext(Dispatchers.IO) {
+                    result.files.map(::File).mapNotNull { file ->
+                        StoreModule.registerMediaFile(file)?.also {
+                            StoreModule.deleteTemporaryDownloadFile(file)
+                        }
                     }
                 }
 
                 if (result.ok || result.skipped > 0) {
-                    progressDetailMessage = getString(R.string.main_status_download_done)
-                    binding.progressBubble.showSuccess(progressDetailMessage)
+                    withContext(Dispatchers.IO) {
+                        StoreModule.cleanupDownloadSidecars()
+                    }
+                    binding.progressBubble.showSuccess(
+                        primaryText = getString(R.string.main_progress_success),
+                        detailText = getString(R.string.main_progress_success_detail),
+                    )
                     UiMotion.performHaptic(binding.progressBubble, UiMotion.Haptic.CONFIRM)
-                    StoreModule.cleanupDownloadSidecars()
                     saveDownloadHistory(
                         sourceUrl = historySourceUrl,
                         title = historyTitle,
@@ -318,6 +351,9 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
                     )
                     toast(getString(R.string.main_toast_download_done))
                 } else {
+                    progressHideDelayMs = ProgressBubblePolicy.resultHideDelay(
+                        ProgressBubbleStage.ERROR
+                    )
                     val errorMessage = result.error ?: result.message
                     saveDownloadHistory(
                         sourceUrl = historySourceUrl,
@@ -331,6 +367,9 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
                     showDownloadFailure(errorMessage)
                 }
             } catch (e: Exception) {
+                progressHideDelayMs = ProgressBubblePolicy.resultHideDelay(
+                    ProgressBubbleStage.ERROR
+                )
                 val errorMessage = getString(
                     R.string.main_error_exception,
                     e.message ?: getString(R.string.main_error_unknown)
@@ -349,10 +388,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
                 isDownloading = false
                 setUiEnabled(true)
                 refreshHistoryUi()
-                lifecycleScope.launch {
-                    delay(PROGRESS_HIDE_DELAY_MS)
-                    binding.progressBubble.hide()
-                }
+                scheduleProgressBubbleHide(progressHideDelayMs)
             }
         }
     }
@@ -779,9 +815,71 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
-    private fun showIndeterminateProgress(message: String) {
-        progressDetailMessage = message
-        binding.progressBubble.showIndeterminate(message)
+    private fun progressBubbleMinY(): Int = systemInsetTop
+
+    private fun progressBubbleMaxY(): Int {
+        val bottomBoundary = binding.bottomNav.top.takeIf { it > 0 }
+            ?: (binding.root.height - systemInsetBottom)
+        return (bottomBoundary - binding.progressBubble.height - dp(8))
+            .coerceAtLeast(progressBubbleMinY())
+    }
+
+    private fun preferredProgressBubbleSide(): ProgressBubbleDockSide =
+        if (binding.root.layoutDirection == View.LAYOUT_DIRECTION_RTL) {
+            ProgressBubbleDockSide.LEFT
+        } else {
+            ProgressBubbleDockSide.RIGHT
+        }
+
+    private fun isAutomaticProgressExpansionSafe(
+        side: ProgressBubbleDockSide,
+        topMargin: Int,
+    ): Boolean {
+        if (side != preferredProgressBubbleSide() || binding.root.width <= 0) return false
+        val availableWidth = binding.root.width - systemInsetLeft - systemInsetRight - dp(16)
+        val expandedWidth = ProgressBubblePolicy.expandedWidth(
+            desiredWidth = dp(ProgressBubblePolicy.EXPANDED_WIDTH_DP),
+            availableWidth = availableWidth,
+        )
+        val bubbleLeft = if (side == ProgressBubbleDockSide.LEFT) {
+            systemInsetLeft + dp(8)
+        } else {
+            binding.root.width - systemInsetRight - dp(8) - expandedWidth
+        }
+        val bubbleRight = bubbleLeft + expandedWidth
+        val title = binding.tvAppTitle
+        val titleTextWidth = title.paint.measureText(title.text.toString())
+        val isRtl = title.layoutDirection == View.LAYOUT_DIRECTION_RTL
+        val titleTextLeft = if (isRtl) {
+            title.x + title.width - title.paddingRight - titleTextWidth
+        } else {
+            title.x + title.paddingLeft
+        }
+        val titleTextRight = titleTextLeft + titleTextWidth
+        val horizontalClear = if (side == ProgressBubbleDockSide.LEFT) {
+            bubbleRight + dp(12) <= titleTextLeft
+        } else {
+            bubbleLeft >= titleTextRight + dp(12)
+        }
+        val bubbleHeight = binding.progressBubble.height.takeIf { it > 0 }
+            ?: dp(ProgressBubblePolicy.HEIGHT_DP)
+        val visibleBubbleBottom = topMargin + bubbleHeight - dp(2)
+        val downloadSectionTop = (binding.contentPanel.y + binding.downloadSection.y).roundToInt()
+        return horizontalClear && visibleBubbleBottom <= downloadSectionTop
+    }
+
+    private fun cancelProgressBubbleHide() {
+        progressHideJob?.cancel()
+        progressHideJob = null
+    }
+
+    private fun scheduleProgressBubbleHide(delayMs: Long) {
+        cancelProgressBubbleHide()
+        progressHideJob = lifecycleScope.launch {
+            delay(delayMs)
+            binding.progressBubble.hide()
+            progressHideJob = null
+        }
     }
 
     private fun updateProgressBubble(
@@ -801,11 +899,19 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         } else {
             getString(R.string.main_progress_speed_unknown)
         }
-        progressDetailMessage = "$sizeText · $speedText"
+        val detailText = "$sizeText · $speedText"
+        cancelProgressBubbleHide()
         if (totalBytes > EMPTY_BYTE_COUNT) {
-            binding.progressBubble.showProgress(percent, progressDetailMessage)
+            binding.progressBubble.showProgress(
+                value = percent,
+                primaryText = getString(R.string.main_status_downloading),
+                detailText = detailText,
+            )
         } else {
-            binding.progressBubble.showIndeterminate(progressDetailMessage)
+            binding.progressBubble.showDownloading(
+                primaryText = getString(R.string.main_status_downloading),
+                detailText = detailText,
+            )
         }
     }
 
@@ -825,23 +931,51 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
 
     private fun setupProgressBubble() {
         binding.progressBubble.setOnClickListener {
-            if (progressDetailMessage.isNotBlank()) toast(progressDetailMessage)
+            if (binding.progressBubble.shouldOpenHistoryOnClick) {
+                showMineSheet()
+            } else {
+                binding.progressBubble.toggleDetails()
+            }
         }
         UiMotion.bindEdgeSnap(
             view = binding.progressBubble,
             boundsProvider = {
                 val bubble = binding.progressBubble
                 val minX = systemInsetLeft + dp(8).toFloat()
-                val maxX = (binding.root.width - systemInsetRight - bubble.width - dp(8))
+                val maxX = (
+                    binding.root.width - systemInsetRight - bubble.compactInteractionWidth - dp(8)
+                    )
                     .coerceAtLeast(minX.toInt()).toFloat()
-                val minY = systemInsetTop + dp(8).toFloat()
-                val bottomBoundary = binding.bottomNav.top.takeIf { it > 0 }
-                    ?: (binding.root.height - systemInsetBottom)
-                val maxY = (bottomBoundary - bubble.height - dp(8))
-                    .coerceAtLeast(minY.toInt()).toFloat()
-                RectF(minX, minY, maxX, maxY)
+                RectF(
+                    minX,
+                    progressBubbleMinY().toFloat(),
+                    maxX,
+                    progressBubbleMaxY().toFloat(),
+                )
             },
-            onDragStarted = { progressBubblePositioned = true },
+            onDragStarted = {
+                progressBubblePositioned = true
+                binding.progressBubble.beginDragFeedback()
+            },
+            onEdgeSettled = { edge ->
+                progressBubbleDockSide = if (edge == UiMotion.HorizontalEdge.LEFT) {
+                    ProgressBubbleDockSide.LEFT
+                } else {
+                    ProgressBubbleDockSide.RIGHT
+                }
+                val topMargin = binding.progressBubble.y.roundToInt()
+                    .coerceIn(progressBubbleMinY(), progressBubbleMaxY())
+                binding.progressBubble.setAutomaticExpansionEnabled(
+                    isAutomaticProgressExpansionSafe(progressBubbleDockSide, topMargin)
+                )
+                binding.progressBubble.positionAtDock(
+                    side = progressBubbleDockSide,
+                    leftMargin = systemInsetLeft + dp(8),
+                    rightMargin = systemInsetRight + dp(8),
+                    topMargin = topMargin,
+                    withImpact = true,
+                )
+            },
         )
     }
 
@@ -877,12 +1011,27 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
                 dp(8) + systemBars.right,
                 dp(4) + systemBars.bottom,
             )
-            if (!progressBubblePositioned) {
-                (binding.progressBubble.layoutParams as FrameLayout.LayoutParams).also { params ->
-                    params.topMargin = systemBars.top + dp(8)
-                    params.marginEnd = systemBars.right + dp(8)
-                    binding.progressBubble.layoutParams = params
+            binding.root.post {
+                val bubble = binding.progressBubble
+                bubble.setAvailableHorizontalSpace(
+                    binding.root.width - systemInsetLeft - systemInsetRight - dp(16)
+                )
+                val topMargin = if (progressBubblePositioned) {
+                    bubble.y.roundToInt().coerceIn(progressBubbleMinY(), progressBubbleMaxY())
+                } else {
+                    progressBubbleDockSide = preferredProgressBubbleSide()
+                    progressBubbleMinY()
                 }
+                bubble.setAutomaticExpansionEnabled(
+                    isAutomaticProgressExpansionSafe(progressBubbleDockSide, topMargin)
+                )
+                bubble.positionAtDock(
+                    side = progressBubbleDockSide,
+                    leftMargin = systemInsetLeft + dp(8),
+                    rightMargin = systemInsetRight + dp(8),
+                    topMargin = topMargin,
+                    withImpact = false,
+                )
                 progressBubblePositioned = true
             }
             insets
@@ -1093,6 +1242,13 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
             getString(R.string.main_platform_selector_title_format, currentTitle)
         binding.tvInputTitle.text = getString(R.string.main_input_title_douyin)
         binding.etUrl.hint = getString(R.string.main_share_input_hint)
+        binding.root.post {
+            val topMargin = binding.progressBubble.y.roundToInt()
+                .coerceIn(progressBubbleMinY(), progressBubbleMaxY())
+            binding.progressBubble.setAutomaticExpansionEnabled(
+                isAutomaticProgressExpansionSafe(progressBubbleDockSide, topMargin)
+            )
+        }
         refreshLoginState()
     }
 
@@ -1106,8 +1262,11 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
     private fun showDownloadFailure(message: String?) {
         val detail = message?.takeIf { it.isNotBlank() }
             ?: getString(R.string.main_error_unknown)
-        progressDetailMessage = detail
-        binding.progressBubble.showError(detail)
+        binding.progressBubble.showError(
+            primaryText = getString(R.string.main_progress_error),
+            detailText = getString(R.string.main_progress_error_detail),
+            accessibilityDetail = detail,
+        )
         showError(detail)
     }
 
@@ -1166,7 +1325,6 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         const val PROGRESS_INIT = 0
         const val PROGRESS_COMPLETE = 100
         const val PROGRESS_RECORD_INIT_TIME = 0L
-        const val PROGRESS_HIDE_DELAY_MS = 1500L
         const val CLIPBOARD_CHECK_DELAY_MS = 500L
         const val PROGRESS_UI_UPDATE_INTERVAL_MS = 200L
         const val EMPTY_BYTE_COUNT = 0L

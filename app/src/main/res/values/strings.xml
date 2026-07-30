@@ -121,7 +121,15 @@
     <string name="main_progress_speed_format">%1$s/s</string>
     <string name="main_progress_bubble_desc">下载进度</string>
     <string name="main_progress_resolving">解析中</string>
+    <string name="main_progress_resolving_detail">正在获取作品信息</string>
     <string name="main_progress_preparing">准备下载</string>
+    <string name="main_progress_preparing_detail">正在建立下载任务</string>
+    <string name="main_progress_finalizing">正在保存</string>
+    <string name="main_progress_finalizing_detail">正在写入系统相册</string>
+    <string name="main_progress_success">保存完成</string>
+    <string name="main_progress_success_detail">文件已保存到系统相册</string>
+    <string name="main_progress_error">下载失败</string>
+    <string name="main_progress_error_detail">点按前往最近下载重试</string>
     <string name="login_title_douyin">登录%1$s</string>
     <string name="login_status_input_code">输入手机号和验证码完成登录</string>
     <string name="login_status_saved">已登录，登录信息已保存</string>

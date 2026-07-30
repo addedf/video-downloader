@@ -20,6 +20,7 @@ import kotlin.math.abs
 
 object UiMotion {
     enum class Haptic { TICK, CONFIRM, REJECT }
+    enum class HorizontalEdge { LEFT, RIGHT }
 
     private const val SPRING_SCALE_X = 1
     private const val SPRING_SCALE_Y = 2
@@ -243,19 +244,19 @@ object UiMotion {
             resetTransform(view)
             return
         }
-        view.scaleX = 0.88f
-        view.scaleY = 0.88f
+        view.scaleX = MotionSpec.RESULT_EMPHASIS_SCALE
+        view.scaleY = MotionSpec.RESULT_EMPHASIS_SCALE
         springScaleToRest(view, MotionSpec.EMPHASIS_DAMPING)
     }
 
-    fun reject(view: View) {
+    fun reject(view: View, direction: Float = 1f) {
         view.animate().cancel()
         cancelSpring(view, SPRING_TRANSLATION_X)
         if (!animationsEnabled()) {
             view.translationX = 0f
             return
         }
-        view.translationX = -view.dp(7f)
+        view.translationX = -view.dp(7f) * direction
         startSpring(
             view,
             SPRING_TRANSLATION_X,
@@ -263,7 +264,7 @@ object UiMotion {
             0f,
             MotionSpec.LIGHT_STIFFNESS + 260f,
             0.48f,
-            startVelocity = view.dp(880f),
+            startVelocity = view.dp(880f) * direction,
         )
     }
 
@@ -312,14 +313,49 @@ object UiMotion {
         view: View,
         boundsProvider: () -> RectF,
         onDragStarted: () -> Unit,
+        onEdgeSettled: (HorizontalEdge) -> Unit = {},
     ) {
         view.setOnTouchListener(
             EdgeSnapTouchListener(
                 view = view,
                 boundsProvider = boundsProvider,
                 onDragStarted = onDragStarted,
+                onEdgeSettled = onEdgeSettled,
             )
         )
+    }
+
+    fun liftForDrag(view: View, elevationDp: Float) {
+        view.animate().cancel()
+        cancelSpring(view, SPRING_SCALE_X)
+        cancelSpring(view, SPRING_SCALE_Y)
+        view.elevation = view.dp(elevationDp)
+        if (!animationsEnabled()) {
+            view.scaleX = MotionSpec.DRAG_LIFT_SCALE
+            view.scaleY = MotionSpec.DRAG_LIFT_SCALE
+            return
+        }
+        view.animate()
+            .scaleX(MotionSpec.DRAG_LIFT_SCALE)
+            .scaleY(MotionSpec.DRAG_LIFT_SCALE)
+            .setDuration(MotionSpec.PRESS_DURATION_MS)
+            .setInterpolator(DecelerateInterpolator())
+            .start()
+    }
+
+    fun settleAtEdge(view: View, elevationDp: Float) {
+        view.animate().cancel()
+        cancelSpring(view, SPRING_SCALE_X)
+        cancelSpring(view, SPRING_SCALE_Y)
+        view.elevation = view.dp(elevationDp)
+        if (!animationsEnabled()) {
+            view.scaleX = 1f
+            view.scaleY = 1f
+            return
+        }
+        view.scaleX = MotionSpec.EDGE_IMPACT_SCALE_X
+        view.scaleY = MotionSpec.EDGE_IMPACT_SCALE_Y
+        springScaleToRest(view, MotionSpec.EMPHASIS_DAMPING)
     }
 
     private fun press(view: View, pressedScale: Float) {
@@ -415,6 +451,7 @@ object UiMotion {
         private val view: View,
         private val boundsProvider: () -> RectF,
         private val onDragStarted: () -> Unit,
+        private val onEdgeSettled: (HorizontalEdge) -> Unit,
     ) : View.OnTouchListener {
         private val touchSlop = ViewConfiguration.get(view.context).scaledTouchSlop
         private var downRawX = 0f
@@ -448,6 +485,8 @@ object UiMotion {
                     if (!dragged && (abs(deltaX) > touchSlop || abs(deltaY) > touchSlop)) {
                         dragged = true
                         onDragStarted()
+                        startX = target.x - deltaX
+                        startY = target.y - deltaY
                     }
                     if (dragged) {
                         val bounds = boundsProvider()
@@ -493,6 +532,11 @@ object UiMotion {
         private fun flingAndSnap(velocityX: Float, velocityY: Float) {
             val bounds = boundsProvider()
             val targetX = MotionSpec.edgeTarget(view.x, velocityX, bounds.left, bounds.right)
+            val targetEdge = if (targetX <= (bounds.left + bounds.right) / 2f) {
+                HorizontalEdge.LEFT
+            } else {
+                HorizontalEdge.RIGHT
+            }
             if (bounds.right > bounds.left && abs(velocityX) >= MotionSpec.FLING_VELOCITY_THRESHOLD) {
                 xFling = FlingAnimation(view, DynamicAnimation.X).apply {
                     setStartVelocity(velocityX)
@@ -500,12 +544,12 @@ object UiMotion {
                     setMinValue(bounds.left)
                     setMaxValue(bounds.right)
                     addEndListener { _, canceled, _, endVelocity ->
-                        if (!canceled) springToHorizontalEdge(targetX, endVelocity)
+                        if (!canceled) springToHorizontalEdge(targetX, endVelocity, targetEdge)
                     }
                     start()
                 }
             } else {
-                springToHorizontalEdge(targetX, velocityX)
+                springToHorizontalEdge(targetX, velocityX, targetEdge)
             }
 
             if (bounds.bottom > bounds.top && abs(velocityY) >= MotionSpec.FLING_VELOCITY_THRESHOLD) {
@@ -521,7 +565,11 @@ object UiMotion {
             }
         }
 
-        private fun springToHorizontalEdge(targetX: Float, velocityX: Float) {
+        private fun springToHorizontalEdge(
+            targetX: Float,
+            velocityX: Float,
+            targetEdge: HorizontalEdge,
+        ) {
             val animation = startSpring(
                 view,
                 SPRING_POSITION_X,
@@ -532,10 +580,14 @@ object UiMotion {
                 velocityX,
             )
             if (animation == null) {
+                onEdgeSettled(targetEdge)
                 performHaptic(view, Haptic.TICK)
             } else {
                 animation.addEndListener { _, canceled, _, _ ->
-                    if (!canceled) performHaptic(view, Haptic.TICK)
+                    if (!canceled) {
+                        onEdgeSettled(targetEdge)
+                        performHaptic(view, Haptic.TICK)
+                    }
                 }
             }
         }

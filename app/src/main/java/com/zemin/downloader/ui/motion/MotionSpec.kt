@@ -3,6 +3,10 @@ package com.zemin.downloader.ui.motion
 internal object MotionSpec {
     const val PRESS_SCALE = 0.96f
     const val COMPACT_PRESS_SCALE = 0.94f
+    const val DRAG_LIFT_SCALE = 1.04f
+    const val RESULT_EMPHASIS_SCALE = 1.08f
+    const val EDGE_IMPACT_SCALE_X = 0.94f
+    const val EDGE_IMPACT_SCALE_Y = 1.04f
     const val LIGHT_DAMPING = 0.82f
     const val EMPHASIS_DAMPING = 0.64f
     const val LIGHT_STIFFNESS = 760f
