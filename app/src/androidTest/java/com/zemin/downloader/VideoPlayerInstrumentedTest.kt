@@ -7,6 +7,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.zemin.downloader.ui.MainActivity
 import com.zemin.downloader.ui.view.VideoPlayerView
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -15,7 +16,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class VideoPlayerInstrumentedTest {
     @Test
-    fun controlsFitPreviewAndBackExitsFullscreen() {
+    fun controlsRequireTapAndBackExitsFullscreen() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val intent = Intent(instrumentation.targetContext, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -31,14 +32,22 @@ class VideoPlayerInstrumentedTest {
         instrumentation.waitForIdleSync()
 
         val videoPlayer = activity.findViewById<VideoPlayerView>(R.id.videoPreview)
-        assertControlsInsidePlayer(activity, videoPlayer)
+        val controls = activity.findViewById<View>(R.id.playerControls)
+        assertEquals(View.INVISIBLE, controls.visibility)
+
+        instrumentation.runOnMainSync {
+            activity.findViewById<View>(R.id.playerSurface).performClick()
+        }
+        instrumentation.waitForIdleSync()
+        assertEquals(View.VISIBLE, controls.visibility)
+        assertBottomControlsInsidePlayer(activity, videoPlayer)
 
         instrumentation.runOnMainSync {
             activity.findViewById<View>(R.id.btnPlayerFullscreen).performClick()
         }
         instrumentation.waitForIdleSync()
         assertTrue(videoPlayer.isFullscreen)
-        assertControlsInsidePlayer(activity, videoPlayer)
+        assertBottomControlsInsidePlayer(activity, videoPlayer)
 
         instrumentation.runOnMainSync {
             activity.onBackPressedDispatcher.onBackPressed()
@@ -49,9 +58,9 @@ class VideoPlayerInstrumentedTest {
         instrumentation.runOnMainSync { activity.finish() }
     }
 
-    private fun assertControlsInsidePlayer(activity: MainActivity, player: VideoPlayerView) {
+    private fun assertBottomControlsInsidePlayer(activity: MainActivity, player: VideoPlayerView) {
         val playerBounds = Rect().also { assertTrue(player.getGlobalVisibleRect(it)) }
-        CONTROL_IDS.forEach { id ->
+        BOTTOM_CONTROL_IDS.forEach { id ->
             val controlBounds = Rect()
             val control = activity.findViewById<View>(id)
             assertTrue("Control $id should be visible", control.getGlobalVisibleRect(controlBounds))
@@ -63,10 +72,7 @@ class VideoPlayerInstrumentedTest {
     }
 
     private companion object {
-        val CONTROL_IDS = intArrayOf(
-            R.id.btnPlayerRewind,
-            R.id.btnPlayerPlayPause,
-            R.id.btnPlayerForward,
+        val BOTTOM_CONTROL_IDS = intArrayOf(
             R.id.playerSeekBar,
             R.id.tvPlayerTime,
             R.id.btnPlayerSpeed,

@@ -105,6 +105,7 @@ class VideoPlayerView @JvmOverloads constructor(
         fullscreenButton.setOnClickListener { toggleFullscreen() }
         setupSeekBar()
         setupMediaListeners()
+        hideControlsImmediately()
         updateControlState()
     }
 
@@ -132,7 +133,7 @@ class VideoPlayerView @JvmOverloads constructor(
         statusText.visibility = View.GONE
         centerControls.visibility = View.INVISIBLE
         loadingIndicator.visibility = View.VISIBLE
-        showControls(scheduleHide = false)
+        hideControlsImmediately()
         videoSurface.setVideoURI(uri, headers)
         videoSurface.requestFocus()
     }
@@ -161,7 +162,7 @@ class VideoPlayerView @JvmOverloads constructor(
         statusText.setText(R.string.player_preview_unavailable)
         statusText.visibility = View.VISIBLE
         centerControls.visibility = View.INVISIBLE
-        showControls(scheduleHide = false)
+        hideControlsImmediately()
     }
 
     fun exitFullscreen(): Boolean {
@@ -210,7 +211,7 @@ class VideoPlayerView @JvmOverloads constructor(
             updateControlState()
             handler.removeCallbacks(progressUpdater)
             handler.post(progressUpdater)
-            showControls(scheduleHide = autoPlay)
+            hideControlsImmediately()
         }
         videoSurface.setOnCompletionListener {
             updateControlState()
@@ -226,7 +227,7 @@ class VideoPlayerView @JvmOverloads constructor(
             statusText.visibility = View.VISIBLE
             centerControls.visibility = View.INVISIBLE
             updateControlState()
-            showControls(scheduleHide = false)
+            hideControlsImmediately()
             playbackErrorListener?.invoke()
             true
         }
@@ -375,6 +376,13 @@ class VideoPlayerView @JvmOverloads constructor(
             .start()
     }
 
+    private fun hideControlsImmediately() {
+        handler.removeCallbacks(hideControlsRunnable)
+        controlsOverlay.animate().cancel()
+        controlsOverlay.alpha = 0f
+        controlsOverlay.visibility = View.INVISIBLE
+    }
+
     private fun scheduleControlsHide() {
         handler.removeCallbacks(hideControlsRunnable)
         if (isPrepared && videoSurface.isPlaying && !isSeeking) {
@@ -456,6 +464,7 @@ class VideoPlayerView @JvmOverloads constructor(
         loadingIndicator.visibility = View.GONE
         centerControls.visibility = View.INVISIBLE
         keepScreenOn = false
+        hideControlsImmediately()
         updateControlState()
     }
 

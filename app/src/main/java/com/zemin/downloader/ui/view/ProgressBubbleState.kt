@@ -25,6 +25,7 @@ internal data class ProgressBubbleState(
 internal object ProgressBubblePolicy {
     const val COMPACT_WIDTH_DP = 56
     const val EXPANDED_WIDTH_DP = 188
+    const val SUCCESS_EXPANDED_WIDTH_DP = 176
     const val HEIGHT_DP = 56
     const val STAGE_AUTO_COLLAPSE_MS = 900L
     const val USER_DETAIL_COLLAPSE_MS = 2_200L
@@ -57,4 +58,7 @@ internal object ProgressBubblePolicy {
 
     fun expandedWidth(desiredWidth: Int, availableWidth: Int): Int =
         desiredWidth.coerceAtMost(availableWidth.coerceAtLeast(0))
+
+    fun desiredExpandedWidth(stage: ProgressBubbleStage?): Int =
+        if (stage == ProgressBubbleStage.SUCCESS) SUCCESS_EXPANDED_WIDTH_DP else EXPANDED_WIDTH_DP
 }

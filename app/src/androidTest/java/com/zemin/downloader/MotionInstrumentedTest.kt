@@ -12,6 +12,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.zemin.downloader.ui.MainActivity
 import com.zemin.downloader.ui.view.DownloadProgressBubbleView
+import com.zemin.downloader.ui.view.ProgressBubblePolicy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -77,12 +78,13 @@ class MotionInstrumentedTest {
         instrumentation.runOnMainSync {
             bubble.showSuccess("保存完成", "文件已保存到系统相册")
         }
-        assertTrue(waitUntil { bubble.visibility == View.VISIBLE && bubble.width > bubble.compactInteractionWidth })
+        val density = activity.resources.displayMetrics.density
+        val successWidth = (ProgressBubblePolicy.SUCCESS_EXPANDED_WIDTH_DP * density).toInt()
+        assertTrue(waitUntil { bubble.visibility == View.VISIBLE && bubble.width == successWidth })
         val bubbleLocation = IntArray(2).also(bubble::getLocationOnScreen)
         val sectionLocation = IntArray(2).also(
             activity.findViewById<View>(R.id.downloadSection)::getLocationOnScreen
         )
-        val density = activity.resources.displayMetrics.density
         assertTrue(bubbleLocation[1] + bubble.height - 2f * density <= sectionLocation[1])
         val appTitle = activity.findViewById<TextView>(R.id.tvAppTitle)
         val titleLocation = IntArray(2).also(appTitle::getLocationOnScreen)

@@ -49,6 +49,22 @@ class ProgressBubblePolicyTest {
         assertEquals(180, ProgressBubblePolicy.expandedWidth(188, 180))
     }
 
+    @Test
+    fun successUsesShorterWidthWithoutConstrainingOtherStates() {
+        assertEquals(
+            176,
+            ProgressBubblePolicy.desiredExpandedWidth(ProgressBubbleStage.SUCCESS),
+        )
+        assertEquals(
+            188,
+            ProgressBubblePolicy.desiredExpandedWidth(ProgressBubbleStage.DOWNLOADING),
+        )
+        assertEquals(
+            188,
+            ProgressBubblePolicy.desiredExpandedWidth(ProgressBubbleStage.ERROR),
+        )
+    }
+
     private fun state(progress: Int?) = ProgressBubbleState(
         stage = ProgressBubbleStage.DOWNLOADING,
         progress = progress,

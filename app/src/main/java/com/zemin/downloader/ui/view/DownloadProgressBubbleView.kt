@@ -32,7 +32,7 @@ class DownloadProgressBubbleView @JvmOverloads constructor(
 ) : View(context, attrs, defStyleAttr) {
     private val compactWidthPx = dp(ProgressBubblePolicy.COMPACT_WIDTH_DP.toFloat()).toInt()
     private val desiredExpandedWidthPx = dp(ProgressBubblePolicy.EXPANDED_WIDTH_DP.toFloat()).toInt()
-    private var expandedWidthPx = desiredExpandedWidthPx
+    private var availableHorizontalSpacePx = desiredExpandedWidthPx
     private val activeProgressColor = ContextCompat.getColor(context, R.color.dy_cyan)
     private val successProgressColor = ContextCompat.getColor(context, R.color.dy_success)
     private val errorProgressColor = ContextCompat.getColor(context, R.color.dy_error)
@@ -166,12 +166,9 @@ class DownloadProgressBubbleView @JvmOverloads constructor(
     }
 
     fun setAvailableHorizontalSpace(availableWidthPx: Int) {
-        val nextWidth = ProgressBubblePolicy.expandedWidth(
-            desiredWidth = desiredExpandedWidthPx,
-            availableWidth = availableWidthPx,
-        ).coerceAtLeast(compactWidthPx)
-        if (nextWidth == expandedWidthPx) return
-        expandedWidthPx = nextWidth
+        val previousWidth = currentExpandedWidthPx()
+        availableHorizontalSpacePx = availableWidthPx.coerceAtLeast(0)
+        if (previousWidth == currentExpandedWidthPx()) return
         updateDisplayText()
         if (expanded) setExpanded(true, animated = false)
     }
@@ -351,6 +348,7 @@ class DownloadProgressBubbleView @JvmOverloads constructor(
 
     private fun applyState(nextState: ProgressBubbleState) {
         val previousState = state
+        val previousExpandedWidth = currentExpandedWidthPx()
         if (
             nextState.progress == null &&
             (nextState.stage == ProgressBubbleStage.RESOLVING ||
@@ -410,6 +408,8 @@ class DownloadProgressBubbleView @JvmOverloads constructor(
             } else {
                 expandTemporarily(collapseDelay)
             }
+        } else if (expanded && previousExpandedWidth != currentExpandedWidthPx()) {
+            setExpanded(true, animated = true)
         }
         invalidate()
     }
@@ -509,7 +509,7 @@ class DownloadProgressBubbleView @JvmOverloads constructor(
 
     private fun setExpanded(value: Boolean, animated: Boolean) {
         expanded = value
-        val targetWidth = if (value) expandedWidthPx else compactWidthPx
+        val targetWidth = if (value) currentExpandedWidthPx() else compactWidthPx
         val currentWidth = layoutParams.width.takeIf { it > 0 } ?: width
         widthAnimator?.cancel()
         if (!animated || !UiMotion.animationsEnabled() || currentWidth == targetWidth) {
@@ -526,10 +526,11 @@ class DownloadProgressBubbleView @JvmOverloads constructor(
 
     private fun updateWidth(nextWidth: Int) {
         layoutParams = layoutParams.apply { width = nextWidth }
-        expansionFraction = if (expandedWidthPx == compactWidthPx) {
+        val targetExpandedWidth = currentExpandedWidthPx()
+        expansionFraction = if (targetExpandedWidth == compactWidthPx) {
             0f
         } else {
-            ((nextWidth - compactWidthPx).toFloat() / (expandedWidthPx - compactWidthPx))
+            ((nextWidth - compactWidthPx).toFloat() / (targetExpandedWidth - compactWidthPx))
                 .coerceIn(0f, 1f)
         }
         invalidate()
@@ -537,7 +538,9 @@ class DownloadProgressBubbleView @JvmOverloads constructor(
 
     private fun updateDisplayText() {
         val currentState = state ?: return
-        val availableTextWidth = (expandedWidthPx - compactWidthPx - dp(TEXT_INSET_DP)).coerceAtLeast(0f)
+        val availableTextWidth = (
+            currentExpandedWidthPx() - compactWidthPx - dp(TEXT_INSET_DP)
+            ).coerceAtLeast(0f)
         displayPrimaryText = TextUtils.ellipsize(
             currentState.primaryText,
             primaryTextPaint,
@@ -550,6 +553,16 @@ class DownloadProgressBubbleView @JvmOverloads constructor(
             availableTextWidth,
             TextUtils.TruncateAt.END,
         ).toString()
+    }
+
+    private fun currentExpandedWidthPx(): Int {
+        val desiredWidthPx = dp(
+            ProgressBubblePolicy.desiredExpandedWidth(state?.stage).toFloat()
+        ).toInt()
+        return ProgressBubblePolicy.expandedWidth(
+            desiredWidth = desiredWidthPx,
+            availableWidth = availableHorizontalSpacePx,
+        ).coerceAtLeast(compactWidthPx)
     }
 
     private fun drawDetails(canvas: Canvas, centerY: Float) {

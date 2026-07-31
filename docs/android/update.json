@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "versionCode": 7,
-  "versionName": "2.3.0",
+  "versionCode": 8,
+  "versionName": "2.3.1",
   "minSupportedVersionCode": 5,
-  "apkUrl": "https://github.com/addedf/video-downloader/releases/download/v2.3.0/DouYinDownloader-v2.3.0-arm64-v8a.apk",
-  "sha256": "beec7d938b70ae5e799225617e9e5e3b06ed3735a4b2fcd5c4373ebaee3280da",
-  "changelog": "新增自定义视频播放器与图片自适应环境背景；升级原生动效和 DockPulse 悬浮进度胶囊；优化解析、保存收尾反馈及媒体库写入性能。",
-  "publishedAt": "2026-07-30T19:23:45Z"
+  "apkUrl": "https://github.com/addedf/video-downloader/releases/download/v2.3.1/DouYinDownloader-v2.3.1-arm64-v8a.apk",
+  "sha256": "cbd487835714d2d5805fbee407834e0a033ccaec695c12929e6461e2eeabca85",
+  "changelog": "优化视频预览控制层，解析后默认隐藏并改为点击显示；收紧 DockPulse 保存成功胶囊，减少多余留白。",
+  "publishedAt": "2026-07-31T20:49:59Z"
 }
