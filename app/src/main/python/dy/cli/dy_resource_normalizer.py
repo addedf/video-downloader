@@ -200,12 +200,35 @@ def _build_live_video(item: Dict[str, Any]) -> Dict[str, Any]:
 
 def _build_cover_resources(aweme_data: Dict[str, Any]) -> List[Dict[str, Any]]:
     video = aweme_data.get("video") if isinstance(aweme_data.get("video"), dict) else {}
-    urls = _collect_urls(
-        video.get("cover"), video.get("origin_cover"), video.get("dynamic_cover")
+    gallery_items = _gallery_items(aweme_data)
+    first_image = gallery_items[0] if gallery_items and isinstance(gallery_items[0], dict) else {}
+    gallery_cover_urls = _collect_urls(
+        first_image.get("watermark_free_download_url_list"),
+        first_image.get("origin_image"),
+        first_image.get("download_url"),
+        first_image.get("download_addr"),
+        first_image.get("download_url_list"),
+        first_image.get("display_image"),
+    )
+    # `cover` is commonly the display thumbnail and may be center-cropped.
+    # For galleries and Live Photos, the complete first image is the safest
+    # cover source. Otherwise try the original video cover before falling back
+    # to display or animated variants.
+    urls = _deduplicate(
+        gallery_cover_urls
+        + _collect_urls(video.get("origin_cover"))
+        + _collect_urls(video.get("cover"))
+        + _collect_urls(video.get("dynamic_cover"))
     )
     if not urls:
         return []
-    width, height = _dimensions(video.get("cover"), video.get("origin_cover"), video)
+    width, height = _dimensions(
+        first_image.get("origin_image"),
+        first_image.get("display_image"),
+        video.get("origin_cover"),
+        video.get("cover"),
+        video,
+    )
     return [
         _resource(
             resource_id="cover_1",

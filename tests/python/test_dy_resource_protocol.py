@@ -15,6 +15,7 @@ from dy.cli.dy_resource_normalizer import normalize_aweme
 from dy.cli.dy_selected_downloader import (
     download_selected_resources,
     parse_download_request,
+    select_download_source_url,
 )
 
 
@@ -120,6 +121,36 @@ class ResourceNormalizerTest(unittest.TestCase):
 
         self.assertEqual([duplicate, "https://cdn.test/fallback.jpg"], urls)
 
+    def test_cover_prefers_complete_origin_cover_over_cropped_display_cover(self):
+        aweme = base_aweme()
+        aweme["video"] = {
+            "cover": media("https://cdn.test/cropped-cover.jpg", 720, 1280),
+            "origin_cover": media("https://cdn.test/original-cover.jpg", 1440, 1920),
+            "dynamic_cover": media("https://cdn.test/animated-cover.webp", 720, 1280),
+        }
+
+        cover = normalize_aweme(aweme)["resources"]["covers"][0]
+
+        self.assertEqual("https://cdn.test/original-cover.jpg", cover["download_urls"][0])
+        self.assertEqual(1440, cover["width"])
+        self.assertEqual(1920, cover["height"])
+
+    def test_gallery_cover_prefers_complete_first_image(self):
+        aweme = base_aweme()
+        aweme["video"].update(
+            {
+                "origin_cover": media("https://cdn.test/gallery-cover.jpg", 1080, 1920),
+                "cover": media("https://cdn.test/gallery-cover-cropped.jpg", 720, 1280),
+            }
+        )
+        aweme["image_post_info"] = {"images": [image_item(1, live=True), image_item(2)]}
+
+        cover = normalize_aweme(aweme)["resources"]["covers"][0]
+
+        self.assertEqual("https://cdn.test/image-1.jpg", cover["download_urls"][0])
+        self.assertEqual(1440, cover["width"])
+        self.assertEqual(1920, cover["height"])
+
 
 class FakeApiClient:
     async def get_session(self):
@@ -201,6 +232,24 @@ class DownloadRequestTest(unittest.TestCase):
         for payload in invalid_payloads:
             with self.subTest(payload=payload), self.assertRaises(ValueError):
                 parse_download_request(payload)
+
+    def test_selected_download_prefers_resolved_work_url_over_short_input(self):
+        request = parse_download_request(request_json())
+
+        source_url = select_download_source_url(
+            "https://v.douyin.com/4og144EvMso/", request
+        )
+
+        self.assertEqual("https://www.douyin.com/note/123456", source_url)
+
+    def test_legacy_download_keeps_original_input_without_request(self):
+        source_url = select_download_source_url(
+            "4.84 https://v.douyin.com/4og144EvMso/ 复制此链接", None
+        )
+
+        self.assertEqual(
+            "4.84 https://v.douyin.com/4og144EvMso/ 复制此链接", source_url
+        )
 
 
 class SelectedDownloaderTest(unittest.IsolatedAsyncioTestCase):

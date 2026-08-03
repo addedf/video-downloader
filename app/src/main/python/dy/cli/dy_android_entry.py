@@ -19,6 +19,7 @@ from .dy_resource_normalizer import build_resolve_response, normalize_aweme
 from .dy_selected_downloader import (
     download_selected_resources,
     parse_download_request,
+    select_download_source_url,
 )
 from common.android_flow_logger import AndroidFlowLogger, new_flow_logger, url_preview
 from common.android_progress_reporter import AndroidProgressReporter
@@ -323,7 +324,7 @@ async def _download_async(
     if not cookies:
         return _error("请先登录抖音获取 Cookie")
 
-    url = str(input_text or "").strip()
+    url = select_download_source_url(input_text, request)
     if not url:
         return _error("请先粘贴抖音分享文本或链接")
 

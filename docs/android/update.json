@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "versionCode": 8,
-  "versionName": "2.3.1",
+  "versionCode": 9,
+  "versionName": "2.3.2",
   "minSupportedVersionCode": 5,
-  "apkUrl": "https://github.com/addedf/video-downloader/releases/download/v2.3.1/DouYinDownloader-v2.3.1-arm64-v8a.apk",
-  "sha256": "cbd487835714d2d5805fbee407834e0a033ccaec695c12929e6461e2eeabca85",
-  "changelog": "优化视频预览控制层，解析后默认隐藏并改为点击显示；收紧 DockPulse 保存成功胶囊，减少多余留白。",
-  "publishedAt": "2026-07-31T20:49:59Z"
+  "apkUrl": "https://github.com/addedf/video-downloader/releases/download/v2.3.2/DouYinDownloader-v2.3.2-arm64-v8a.apk",
+  "sha256": "842eab2af004f5b67f4ef3dc7f2c265c1664160dc98ac684790894ad51bb08b9",
+  "changelog": "修复 Live 图短链在下载阶段偶发识别为 short 导致保存失败；图集和 Live 图封面优先保存完整首张原图，视频封面优先使用原始封面，避免下载裁切版本。",
+  "publishedAt": "2026-08-03T18:55:42Z"
 }

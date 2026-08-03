@@ -8,10 +8,32 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
-from utils.validators import sanitize_filename
+from utils.validators import is_short_url, sanitize_filename
 
 
 SUPPORTED_RESOURCE_TYPES = {"video", "image", "cover", "audio"}
+
+
+def select_download_source_url(
+    input_text: str, request: Optional[Dict[str, Any]]
+) -> str:
+    """Prefer the canonical URL captured by resolve protocol v2.
+
+    A selected download starts from a successfully resolved preview, so its
+    request source is more reliable than resolving the pasted short link a
+    second time. Keep the original input as the compatibility fallback for
+    legacy downloads and malformed/short request sources.
+    """
+    fallback = str(input_text or "").strip()
+    if not isinstance(request, dict):
+        return fallback
+    source = request.get("source")
+    if not isinstance(source, dict):
+        return fallback
+    source_url = str(source.get("url") or "").strip()
+    if not source_url or is_short_url(source_url):
+        return fallback
+    return source_url
 
 
 def parse_download_request(raw: Optional[str]) -> Optional[Dict[str, Any]]:
