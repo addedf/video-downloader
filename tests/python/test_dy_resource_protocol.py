@@ -151,6 +151,29 @@ class ResourceNormalizerTest(unittest.TestCase):
         self.assertEqual(1440, cover["width"])
         self.assertEqual(1920, cover["height"])
 
+    def test_gallery_cover_reuses_first_normalized_image_candidates(self):
+        aweme = base_aweme()
+        aweme["image_post_info"] = {
+            "images": [
+                {
+                    "url_list": ["https://cdn.test/content-no-watermark.jpg"],
+                    "origin_image": media(
+                        "https://cdn.test/owner_watermark_image.jpg", 1440, 1920
+                    ),
+                    "display_image": media(
+                        "https://cdn.test/cropped-preview.webp", 720, 960
+                    ),
+                }
+            ]
+        }
+
+        work = normalize_aweme(aweme)
+        image_urls = work["resources"]["images"][0]["download_urls"]
+        cover_urls = work["resources"]["covers"][0]["download_urls"]
+
+        self.assertEqual("https://cdn.test/content-no-watermark.jpg", image_urls[0])
+        self.assertEqual(image_urls, cover_urls[: len(image_urls)])
+
 
 class FakeApiClient:
     async def get_session(self):

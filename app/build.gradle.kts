@@ -15,8 +15,8 @@ android {
         applicationId = "com.ricardo.douyindown"
         minSdk = 28
         targetSdk = 36
-        versionCode = 10
-        versionName = "2.3.3"
+        versionCode = 11
+        versionName = "2.3.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

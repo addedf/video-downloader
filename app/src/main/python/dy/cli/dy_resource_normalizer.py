@@ -37,9 +37,9 @@ def normalize_aweme(aweme_data: Dict[str, Any]) -> Dict[str, Any]:
     author_name = str(author.get("nickname") or "未知作者").strip() or "未知作者"
     author_id = str(author.get("sec_uid") or author.get("uid") or "")
 
-    covers = _build_cover_resources(aweme_data)
-    cover_previews = covers[0]["preview_urls"] if covers else []
     images = _build_image_resources(aweme_data)
+    covers = _build_cover_resources(aweme_data, images)
+    cover_previews = covers[0]["preview_urls"] if covers else []
     videos = _build_video_resources(aweme_data, cover_previews)
     audios = _build_audio_resources(aweme_data, cover_previews)
     live_video_count = sum(
@@ -198,22 +198,35 @@ def _build_live_video(item: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _build_cover_resources(aweme_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+def _build_cover_resources(
+    aweme_data: Dict[str, Any], image_resources: Optional[List[Dict[str, Any]]] = None
+) -> List[Dict[str, Any]]:
     video = aweme_data.get("video") if isinstance(aweme_data.get("video"), dict) else {}
     gallery_items = _gallery_items(aweme_data)
     first_image = gallery_items[0] if gallery_items and isinstance(gallery_items[0], dict) else {}
-    gallery_cover_urls = _collect_urls(
-        first_image.get("watermark_free_download_url_list"),
-        first_image.get("origin_image"),
-        first_image.get("download_url"),
-        first_image.get("download_addr"),
-        first_image.get("download_url_list"),
-        first_image.get("display_image"),
-    )
-    # `cover` is commonly the display thumbnail and may be center-cropped.
-    # For galleries and Live Photos, the complete first image is the safest
-    # cover source. Otherwise try the original video cover before falling back
-    # to display or animated variants.
+    first_image_resource = image_resources[0] if image_resources else {}
+
+    # A gallery/Live Photo cover represents its first image. Reuse the exact
+    # normalized image candidates instead of rebuilding a smaller candidate
+    # set here: some Douyin responses expose the usable no-watermark URL on the
+    # image item itself while their dedicated cover/origin fields are already
+    # watermarked. This keeps "save cover" identical to saving image 01.
+    gallery_cover_urls = list(first_image_resource.get("download_urls") or [])
+    if gallery_items and not gallery_cover_urls:
+        gallery_cover_urls = _collect_urls(
+            first_image.get("watermark_free_download_url_list"),
+            first_image,
+            first_image.get("origin_image"),
+            first_image.get("display_image"),
+            first_image.get("download_url"),
+            first_image.get("download_addr"),
+            first_image.get("download_url_list"),
+            first_image.get("owner_watermark_image"),
+        )
+
+    # `video.cover` is commonly a display thumbnail and may be center-cropped.
+    # Galleries use the complete first content image; standalone videos prefer
+    # the original platform cover before display or animated variants.
     urls = _deduplicate(
         gallery_cover_urls
         + _collect_urls(video.get("origin_cover"))
@@ -222,13 +235,15 @@ def _build_cover_resources(aweme_data: Dict[str, Any]) -> List[Dict[str, Any]]:
     )
     if not urls:
         return []
-    width, height = _dimensions(
+    fallback_width, fallback_height = _dimensions(
         first_image.get("origin_image"),
         first_image.get("display_image"),
         video.get("origin_cover"),
         video.get("cover"),
         video,
     )
+    width = _int_value(first_image_resource.get("width")) or fallback_width
+    height = _int_value(first_image_resource.get("height")) or fallback_height
     return [
         _resource(
             resource_id="cover_1",
