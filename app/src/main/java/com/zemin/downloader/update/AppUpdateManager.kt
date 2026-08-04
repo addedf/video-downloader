@@ -37,13 +37,7 @@ class AppUpdateManager(
     private val installPermissionLauncher = activity.registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
-        val apkFile = pendingInstallFile
-        pendingInstallFile = null
-        if (apkFile != null && activity.packageManager.canRequestPackageInstalls()) {
-            openSystemInstaller(apkFile)
-        } else if (apkFile != null) {
-            toast(activity.getString(R.string.update_install_permission_denied))
-        }
+        finishInstallPermissionRequest()
     }
 
     private var checkRequested = false
@@ -52,6 +46,8 @@ class AppUpdateManager(
     private var dialogBinding: DialogAppUpdateBinding? = null
     private var downloadJob: Job? = null
     private var pendingInstallFile: File? = null
+    private var installPermissionDialog: AlertDialog? = null
+    private var awaitingInstallPermission = false
 
     init {
         activity.lifecycle.addObserver(this)
@@ -70,6 +66,12 @@ class AppUpdateManager(
                 .getOrNull()
                 ?.takeUnless(::isIgnored)
                 ?.let(::showUpdateDialog)
+        }
+    }
+
+    override fun onResume(owner: LifecycleOwner) {
+        if (awaitingInstallPermission) {
+            finishInstallPermissionRequest()
         }
     }
 
@@ -182,21 +184,71 @@ class AppUpdateManager(
     }
 
     private fun requestInstall(apkFile: File) {
-        if (activity.packageManager.canRequestPackageInstalls()) {
-            openSystemInstaller(apkFile)
+        pendingInstallFile = apkFile
+        if (continueInstallIfAllowed()) return
+        showInstallPermissionDialog(firstRequest = true)
+    }
+
+    private fun showInstallPermissionDialog(firstRequest: Boolean) {
+        if (pendingInstallFile == null || activity.isFinishing || activity.isDestroyed ||
+            installPermissionDialog?.isShowing == true
+        ) {
             return
         }
-        pendingInstallFile = apkFile
+        installPermissionDialog = AlertDialog.Builder(activity)
+            .setTitle(R.string.update_install_ready_title)
+            .setMessage(
+                if (firstRequest) {
+                    R.string.update_install_ready_message
+                } else {
+                    R.string.update_install_permission_denied
+                }
+            )
+            .setPositiveButton(R.string.update_install_continue) { _, _ ->
+                openInstallPermissionSettings()
+            }
+            .setNegativeButton(R.string.update_install_later) { _, _ ->
+                pendingInstallFile = null
+            }
+            .setCancelable(false)
+            .create()
+            .also { dialog ->
+                dialog.setOnDismissListener { installPermissionDialog = null }
+                dialog.show()
+            }
+    }
+
+    private fun openInstallPermissionSettings() {
         val intent = Intent(
             Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
             Uri.parse("package:${activity.packageName}"),
         )
+        awaitingInstallPermission = true
         try {
             installPermissionLauncher.launch(intent)
         } catch (_: ActivityNotFoundException) {
-            pendingInstallFile = null
+            awaitingInstallPermission = false
             toast(activity.getString(R.string.update_install_settings_unavailable))
+            activity.window.decorView.post {
+                showInstallPermissionDialog(firstRequest = false)
+            }
         }
+    }
+
+    private fun finishInstallPermissionRequest() {
+        if (!awaitingInstallPermission) return
+        awaitingInstallPermission = false
+        if (!continueInstallIfAllowed() && pendingInstallFile != null) {
+            showInstallPermissionDialog(firstRequest = false)
+        }
+    }
+
+    private fun continueInstallIfAllowed(): Boolean {
+        if (!activity.packageManager.canRequestPackageInstalls()) return false
+        val apkFile = pendingInstallFile ?: return false
+        pendingInstallFile = null
+        openSystemInstaller(apkFile)
+        return true
     }
 
     private fun openSystemInstaller(apkFile: File) {
@@ -233,6 +285,9 @@ class AppUpdateManager(
         updateDialog?.dismiss()
         updateDialog = null
         dialogBinding = null
+        installPermissionDialog?.dismiss()
+        installPermissionDialog = null
+        awaitingInstallPermission = false
         pendingInstallFile = null
     }
 

@@ -23,6 +23,25 @@ class UpdateManifestParserTest {
         ))
     }
 
+    @Test
+    fun acceptsOwnedUpdateHostApk() {
+        val manifest = validManifest().replace(
+            "https://github.com/addedf/video-downloader/releases/download/v2.1.0/app.apk",
+            "https://updates.menkange.com/android/DouYinDownloader-v2.3.3-arm64-v8a.apk",
+        )
+
+        val info = UpdateManifestParser.parse(manifest)
+
+        assertEquals("updates.menkange.com", java.net.URI(info.apkUrl).host)
+    }
+
+    @Test
+    fun rejectsOwnedUpdateHostApkWithQuery() {
+        assertFalse(AppUpdateConfig.isAllowedApkUrl(
+            "https://updates.menkange.com/android/app.apk?token=secret"
+        ))
+    }
+
     @Test(expected = Exception::class)
     fun rejectsUnknownFields() {
         UpdateManifestParser.parse(validManifest().replace(

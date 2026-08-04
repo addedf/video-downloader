@@ -7,16 +7,16 @@
 1. 增加 `app/build.gradle.kts` 中的 `versionCode` 和 `versionName`。
 2. 使用与已发布版本相同的证书构建 release APK。
 3. 用 `apksigner verify --print-certs` 检查签名，用 `shasum -a 256` 计算摘要。
-4. 创建 GitHub Release，并上传文件名以 `.apk` 结尾的安装包。
-5. 更新 `docs/android/update.json` 的版本、APK URL、SHA-256、更新说明和发布时间。
+4. 将 APK 复制到 `docs/android/` 作为更新域名的主下载镜像，并创建 GitHub Release 作为备用发布入口。
+5. 更新 `docs/android/update.json` 的版本、主镜像 URL、SHA-256、更新说明和发布时间。
 6. 提交清单后，确认 `https://updates.menkange.com/android/update.json` 返回新内容。
 
 App 只接受以下来源：
 
 - 更新清单：`https://updates.menkange.com/android/update.json`
-- APK：`updates.menkange.com/android/` 或 `addedf/video-downloader` 的 GitHub Releases
+- APK：优先使用 `updates.menkange.com/android/` 同域镜像；`addedf/video-downloader` 的 GitHub Releases 作为备用发布入口
 
-下载完成后，App 还会校验 SHA-256、包名、`versionCode` 和签名证书，全部通过才会打开 Android 系统安装页。
+下载完成后，App 还会校验 SHA-256、包名、`versionCode` 和签名证书，全部通过才会打开 Android 系统安装页。首次安装应用内更新时，还需要在系统页面开启“允许来自此来源”；v2.3.3 起会在跳转前明确提示，并在返回后自动继续安装。
 
 ## 签名兼容性
 

@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="README.md">中文</a> · <a href="https://github.com/addedf/video-downloader/releases/tag/v2.3.2">Download v2.3.2</a>
+  <a href="README.md">中文</a> · <a href="https://github.com/addedf/video-downloader/releases/tag/v2.3.3">Download v2.3.3</a>
 </p>
 
 Douyin Downloader is an open-source Android app for parsing Douyin share text, short links, and work links, then saving available videos or image posts to the system media library. The interface is native Android; Chaquopy bridges the UI with Python-based parsing and download logic.

@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "versionCode": 9,
-  "versionName": "2.3.2",
+  "versionCode": 10,
+  "versionName": "2.3.3",
   "minSupportedVersionCode": 5,
-  "apkUrl": "https://github.com/addedf/video-downloader/releases/download/v2.3.2/DouYinDownloader-v2.3.2-arm64-v8a.apk",
-  "sha256": "842eab2af004f5b67f4ef3dc7f2c265c1664160dc98ac684790894ad51bb08b9",
-  "changelog": "修复 Live 图短链在下载阶段偶发识别为 short 导致保存失败；图集和 Live 图封面优先保存完整首张原图，视频封面优先使用原始封面，避免下载裁切版本。",
-  "publishedAt": "2026-08-03T18:55:42Z"
+  "apkUrl": "https://updates.menkange.com/android/DouYinDownloader-v2.3.3-arm64-v8a.apk",
+  "sha256": "f4a155b94b6200e2cdf21c484d0c8874ea5fcd21aca7e626f23a15fd0ffcfbe8",
+  "changelog": "修复 Live 图短链下载失败和封面裁切；更新包改由更新域名直接下载，降低 GitHub 网络导致的失败；安装包下载完成后会明确引导开启安装权限，返回后自动继续安装。",
+  "publishedAt": "2026-08-04T16:37:35Z"
 }
